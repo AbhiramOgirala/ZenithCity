@@ -180,6 +180,43 @@ router.put('/buildings/:id/upgrade', authMiddleware, async (req: AuthRequest, re
   }
 });
 
+// PUT /api/cities/buildings/:id/move
+router.put('/buildings/:id/move', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { position_x, position_z } = req.body;
+    
+    if (typeof position_x !== 'number' || typeof position_z !== 'number') {
+      res.status(400).json({ error: 'Invalid position coordinates' }); return;
+    }
+
+    const { data: building } = await supabase
+      .from('buildings').select('*, cities!inner(user_id)').eq('id', req.params.id).single();
+
+    if (!building || (building.cities as any).user_id !== req.user!.id) {
+      res.status(404).json({ error: 'Building not found' }); return;
+    }
+
+    // Update building position
+    const { data: moved, error } = await supabase
+      .from('buildings')
+      .update({ 
+        position_x, 
+        position_z,
+        position_y: 0 // Keep Y at ground level
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ building: moved });
+  } catch (err) {
+    console.error('Move building error:', err);
+    res.status(500).json({ error: 'Failed to move building' });
+  }
+});
+
 // PUT /api/cities/buildings/:id/repair
 router.put('/buildings/:id/repair', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {

@@ -16,6 +16,9 @@ import { useGLTF, Float, Edges } from '@react-three/drei';
 import * as THREE from 'three';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+import DraggableBuilding from './DraggableBuilding';
+import BuildingPlacer from './BuildingPlacer';
+
 interface BuildingData {
   id: string; type: string; level: number;
   status: string; health: number;
@@ -978,11 +981,21 @@ export default function City3D({
   territorySize = 100,
   timeOfDay = 12,
   sunIntensity = 1,
+  placementMode = null,
+  isDragMode = false,
+  onBuildingPlace,
+  onBuildingMove,
+  onPlacementCancel,
 }: {
   buildings: BuildingData[];
   territorySize?: number;
   timeOfDay?: number;
   sunIntensity?: number;
+  placementMode?: string | null;
+  isDragMode?: boolean;
+  onBuildingPlace?: (position: { x: number, z: number }) => void;
+  onBuildingMove?: (buildingId: string, position: { x: number, z: number }) => void;
+  onPlacementCancel?: () => void;
 }) {
   return (
     <group>
@@ -996,7 +1009,14 @@ export default function City3D({
 
       {/* Buildings */}
       {buildings.map(b => (
-        <group key={b.id} position={[b.position_x, b.position_y, b.position_z]}>
+        <DraggableBuilding
+          key={b.id}
+          buildingId={b.id}
+          initialPosition={[b.position_x, b.position_y, b.position_z]}
+          onMove={onBuildingMove || (() => {})}
+          territorySize={territorySize}
+          isDragMode={isDragMode}
+        >
           {b.status === 'under_construction'
             ? <UnderConstruction type={b.type} />
             : <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} timeOfDay={timeOfDay} />
@@ -1009,8 +1029,18 @@ export default function City3D({
                 transparent opacity={0.25} />
             </mesh>
           )}
-        </group>
+        </DraggableBuilding>
       ))}
+
+      {/* Building placement mode */}
+      {placementMode && onBuildingPlace && onPlacementCancel && (
+        <BuildingPlacer
+          buildingType={placementMode}
+          onPlace={onBuildingPlace}
+          onCancel={onPlacementCancel}
+          territorySize={territorySize}
+        />
+      )}
     </group>
   );
 }

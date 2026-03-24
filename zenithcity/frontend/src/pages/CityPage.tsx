@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {
   fetchCity, constructBuilding, upgradeBuilding,
-  repairBuilding, setBuildingPanelOpen
+  repairBuilding, setBuildingPanelOpen, moveBuilding
 } from '../store/slices/citySlice';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
@@ -84,6 +84,8 @@ export default function CityPage() {
   const [selectedType, setSelectedType] = useState('house');
   const [activeTab, setActiveTab] = useState<'build' | 'buildings'>('build');
   const [constructing, setConstructing] = useState(false);
+  const [placementMode, setPlacementMode] = useState<string | null>(null);
+  const [isDragMode, setIsDragMode] = useState(false);
   
   // Sky system state
   const [lightingData, setLightingData] = useState({
@@ -147,33 +149,55 @@ export default function CityPage() {
       return;
     }
 
+    // Enter placement mode instead of auto-placing
+    setPlacementMode(selectedType);
+  };
+
+  const handleBuildingPlace = async (position: { x: number, z: number }) => {
+    if (!placementMode) return;
+
     setConstructing(true);
-    // Spread buildings across a grid so they don't overlap
-    const buildingCount = city?.buildings?.length || 0;
-    const gridSize = 5;
-    const col = buildingCount % gridSize;
-    const row = Math.floor(buildingCount / gridSize);
-    const spacing = 6;
-    const x = (col - Math.floor(gridSize / 2)) * spacing + (Math.random() - 0.5);
-    const z = (row - 1) * spacing + (Math.random() - 0.5);
+    setPlacementMode(null);
 
     const result = await dispatch(constructBuilding({
-      type: selectedType,
-      position_x: x,
+      type: placementMode,
+      position_x: position.x,
       position_y: 0,
-      position_z: z,
+      position_z: position.z,
     }));
 
     setConstructing(false);
 
     if (result.meta.requestStatus === 'fulfilled') {
-      const bt = BUILDING_TYPES.find(b => b.id === selectedType)!;
+      const bt = BUILDING_TYPES.find(b => b.id === placementMode)!;
       dispatch(addToast({ type: 'success', message: `${bt.emoji} ${bt.label} construction started!` }));
       // Sync the updated balance from server
       dispatch(fetchProfile());
     } else {
       const msg = (result.payload as string) || 'Construction failed';
       dispatch(addToast({ type: 'error', message: msg }));
+    }
+  };
+
+  const handlePlacementCancel = () => {
+    setPlacementMode(null);
+  };
+
+  const handleBuildingMove = async (buildingId: string, position: { x: number, z: number }) => {
+    try {
+      const result = await dispatch(moveBuilding({
+        buildingId,
+        position_x: position.x,
+        position_z: position.z
+      }));
+
+      if (result.meta.requestStatus === 'fulfilled') {
+        dispatch(addToast({ type: 'success', message: 'Building moved successfully!' }));
+      } else {
+        dispatch(addToast({ type: 'error', message: 'Failed to move building' }));
+      }
+    } catch (error) {
+      dispatch(addToast({ type: 'error', message: 'Failed to move building' }));
     }
   };
 
@@ -235,6 +259,11 @@ export default function CityPage() {
               territorySize={city?.territory_size || 100}
               timeOfDay={lightingData.timeOfDay}
               sunIntensity={lightingData.sunIntensity}
+              placementMode={placementMode}
+              isDragMode={isDragMode}
+              onBuildingPlace={handleBuildingPlace}
+              onBuildingMove={handleBuildingMove}
+              onPlacementCancel={handlePlacementCancel}
             />
             
             {/* Camera controls */}
@@ -383,9 +412,9 @@ export default function CityPage() {
 
                     <button
                       onClick={handleConstruct}
-                      disabled={constructing || !canAffordSelected}
+                      disabled={constructing || !canAffordSelected || placementMode !== null}
                       className={`px-6 py-3 rounded-xl font-display font-semibold text-sm uppercase tracking-widest flex items-center gap-2 transition-all ${
-                        canAffordSelected
+                        canAffordSelected && !placementMode
                           ? 'btn-primary'
                           : 'bg-space-800/50 border border-space-700/30 text-space-600 cursor-not-allowed'
                       }`}
@@ -394,11 +423,22 @@ export default function CityPage() {
                         ? <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                         : <Plus className="w-4 h-4" />
                       }
-                      {canAffordSelected ? 'Build' : `Need ${(selectedCost - balance).toLocaleString()} more pts`}
+                      {placementMode ? 'Click to place' : canAffordSelected ? 'Build' : `Need ${(selectedCost - balance).toLocaleString()} more pts`}
                     </button>
                   </div>
 
-                  {!canAffordSelected && (
+                  {/* Placement mode instructions */}
+                  {placementMode && (
+                    <div className="glass-sm rounded-xl p-3 border border-neon-cyan/20">
+                      <p className="text-xs text-neon-cyan font-semibold mb-1">🎯 Placement Mode Active</p>
+                      <p className="text-xs text-space-300">
+                        Move your mouse to position the building, then <strong>click</strong> to place it.
+                        <strong> Right-click</strong> to cancel.
+                      </p>
+                    </div>
+                  )}
+
+                  {!canAffordSelected && !placementMode && (
                     <p className="text-xs text-space-500 text-center">
                       Complete workouts with AI camera to earn points and unlock this building
                     </p>
@@ -408,7 +448,35 @@ export default function CityPage() {
 
               {/* MANAGE TAB */}
               {activeTab === 'buildings' && (
-                <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                <div className="space-y-4">
+                  {/* Drag mode toggle */}
+                  <div className="flex items-center justify-between p-3 glass-sm rounded-xl border border-space-600/40">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Move Buildings</p>
+                      <p className="text-xs text-space-400">Drag and drop buildings to rearrange your city</p>
+                    </div>
+                    <button
+                      onClick={() => setIsDragMode(!isDragMode)}
+                      className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        isDragMode
+                          ? 'bg-neon-green/20 border border-neon-green/40 text-neon-green'
+                          : 'bg-space-700/50 border border-space-600/40 text-space-300 hover:bg-space-600/50'
+                      }`}
+                    >
+                      {isDragMode ? '✓ Drag Mode ON' : 'Enable Drag Mode'}
+                    </button>
+                  </div>
+
+                  {isDragMode && (
+                    <div className="glass-sm rounded-xl p-3 border border-neon-green/20">
+                      <p className="text-xs text-neon-green font-semibold mb-1">🎯 Drag Mode Active</p>
+                      <p className="text-xs text-space-300">
+                        Click and drag any building to move it. Buildings will snap to a grid and must stay within your territory.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
                   {/* Under construction */}
                   {constructingBuildings.length > 0 && (
                     <>
@@ -518,6 +586,7 @@ export default function CityPage() {
                       No buildings yet — earn points and start building!
                     </div>
                   )}
+                  </div>
                 </div>
               )}
             </div>

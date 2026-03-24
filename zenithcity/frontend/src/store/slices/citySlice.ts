@@ -83,6 +83,22 @@ export const repairBuilding = createAsyncThunk(
   }
 );
 
+// moveBuilding action
+export const moveBuilding = createAsyncThunk(
+  'city/move',
+  async (data: { buildingId: string; position_x: number; position_z: number }, { rejectWithValue }) => {
+    try {
+      const result = await api.put(`/cities/buildings/${data.buildingId}/move`, {
+        position_x: data.position_x,
+        position_z: data.position_z
+      });
+      return result.building;
+    } catch (err: any) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 // expandTerritory now returns { city, expansion_amount, new_balance }
 export const expandTerritory = createAsyncThunk(
   'city/expandTerritory',
@@ -136,6 +152,12 @@ const citySlice = createSlice({
       .addCase(expandTerritory.fulfilled, (s, a) => {
         if (s.city && a.payload.city) {
           s.city.territory_size = a.payload.city.territory_size;
+        }
+      })
+      .addCase(moveBuilding.fulfilled, (s, a) => {
+        if (s.city && a.payload) {
+          const idx = s.city.buildings.findIndex(b => b.id === a.payload.id);
+          if (idx >= 0) s.city.buildings[idx] = a.payload;
         }
       });
   },
