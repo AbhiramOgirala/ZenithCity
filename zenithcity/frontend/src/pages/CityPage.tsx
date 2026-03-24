@@ -2,10 +2,10 @@ import { useEffect, useState, Suspense } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import {
   Building2, Plus, ArrowUp, Wrench, Zap, Shield, Map,
-  Layers, AlertTriangle, Lock, CheckCircle, Clock, Sun, Moon
+  Layers, AlertTriangle, Lock, Clock, Sun, Moon
 } from 'lucide-react';
 import {
   fetchCity, constructBuilding, upgradeBuilding,
@@ -15,6 +15,7 @@ import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { RootState, AppDispatch } from '../store';
 import City3D from '../components/City3D';
+import CitySky from '../components/CitySky';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const BUILDING_TYPES = [
@@ -87,11 +88,10 @@ export default function CityPage() {
   const systemHour = new Date().getHours();
   const isDay = lightMode === 'day' || (lightMode === 'auto' && systemHour >= 6 && systemHour < 20);
 
-  const lightPreset = isDay ? 'dawn' : 'night';
-  const ambientIntensity = isDay ? 0.5 : 0.15;
-  const dirLightIntensity = isDay ? 1.8 : 0.3;
-  const dirLightColor = isDay ? '#ffffff' : '#8888ff';
-  const dirLightPos: [number, number, number] = isDay ? [15, 30, 15] : [5, 15, 5];
+  const ambientIntensity = isDay ? 0.55 : 0.08;
+  const dirLightIntensity = isDay ? 2.2 : 0.25;
+  const dirLightColor = isDay ? '#fff8e8' : '#6677cc';
+  const dirLightPos: [number, number, number] = isDay ? [60, 55, -80] : [-55, 60, -75];
 
   useAutoCompleteBuildings();
 
@@ -176,20 +176,20 @@ export default function CityPage() {
           shadows
         >
           <Suspense fallback={null}>
+            <CitySky isDay={isDay} />
             <ambientLight intensity={ambientIntensity} />
-            <hemisphereLight args={[isDay ? '#87ceeb' : '#0a1628', isDay ? '#4a7c23' : '#1a2a4a', isDay ? 0.8 : 0.4]} />
+            <hemisphereLight args={[isDay ? '#87ceeb' : '#0a1628', isDay ? '#4a7c23' : '#1a2a4a', isDay ? 0.9 : 0.3]} />
             <directionalLight
               position={dirLightPos} intensity={dirLightIntensity} color={dirLightColor} castShadow
               shadow-mapSize={[2048, 2048]}
-              shadow-camera-far={80}
-              shadow-camera-left={-30} shadow-camera-right={30}
-              shadow-camera-top={30}  shadow-camera-bottom={-30}
+              shadow-camera-far={120}
+              shadow-camera-left={-40} shadow-camera-right={40}
+              shadow-camera-top={40}  shadow-camera-bottom={-40}
             />
-            <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={isDay ? 0.6 : 1.2} distance={45} />
-            <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={isDay ? 0.4 : 0.8} distance={40} />
+            <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={isDay ? 0.4 : 1.8} distance={50} />
+            <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={isDay ? 0.3 : 1.2} distance={45} />
             <City3D buildings={city?.buildings || []} territorySize={city?.territory_size || 100} />
             <OrbitControls enablePan maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60} />
-            <Environment preset={lightPreset} />
           </Suspense>
         </Canvas>
 
