@@ -596,22 +596,74 @@ function UnderConstruction({ type }: { type: string }) {
 
 // ─── Ground + City Infrastructure ─────────────────────────────────────────────
 function CityGround() {
+  const grassTex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d')!;
+    // Base grass color
+    ctx.fillStyle = '#2d5a1b';
+    ctx.fillRect(0, 0, 512, 512);
+    // Variation patches
+    for (let i = 0; i < 800; i++) {
+      const x = Math.random() * 512, y = Math.random() * 512;
+      const r = 2 + Math.random() * 6;
+      const shade = Math.random() > 0.5 ? '#3a7a22' : '#1e4010';
+      ctx.fillStyle = shade;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.6, Math.random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(20, 20);
+    return t;
+  }, []);
+
+  const roadTex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#1a1e24';
+    ctx.fillRect(0, 0, 64, 64);
+    // Asphalt grain
+    for (let i = 0; i < 200; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
+      ctx.fillRect(Math.random() * 64, Math.random() * 64, 1, 1);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(4, 4);
+    return t;
+  }, []);
+
   return (
     <>
-      {/* Ground plane */}
+      {/* Grass ground plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <planeGeometry args={[160, 160]} />
-        <meshStandardMaterial color="#0D1117" roughness={1} />
+        <meshStandardMaterial map={grassTex} roughness={0.95} color="#3a6b22" />
       </mesh>
 
-      {/* Sidewalk network */}
+      {/* Roads */}
+      {[-3, -1, 1, 3].flatMap(i =>
+        [false, true].map((vert, j) => (
+          <mesh key={`road${i}${j}`}
+            rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
+            position={[vert ? i * 10 : 0, 0.001, vert ? 0 : i * 10]}>
+            <planeGeometry args={[100, 2.8]} />
+            <meshStandardMaterial map={roadTex} roughness={0.9} />
+          </mesh>
+        ))
+      )}
+
+      {/* Sidewalks */}
       {[-3, -1, 1, 3].flatMap(i =>
         [false, true].map((vert, j) => (
           <mesh key={`sw${i}${j}`}
             rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
             position={[vert ? i * 10 : 0, 0.002, vert ? 0 : i * 10]}>
             <planeGeometry args={[100, 1.4]} />
-            <meshStandardMaterial color="#1C2025" roughness={0.95} />
+            <meshStandardMaterial color="#2a2e35" roughness={0.95} />
           </mesh>
         ))
       )}

@@ -18,6 +18,7 @@ import battleRoutes from './routes/battles';
 import pointsRoutes from './routes/points';
 import dashboardRoutes from './routes/dashboard';
 import feedbackRoutes from './routes/feedback';
+import workoutPlanRoutes from './routes/workoutPlan';
 
 const app = express();
 const httpServer = createServer(app);
@@ -44,6 +45,7 @@ app.use('/api/battles', battleRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/workout-plan', workoutPlanRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

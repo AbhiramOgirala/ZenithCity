@@ -172,7 +172,7 @@ export default function CityPage() {
       <div className="flex-1 relative min-h-0" style={{ minHeight: '420px' }}>
         <Canvas
           camera={{ position: [22, 18, 22], fov: 48 }}
-          style={{ background: 'transparent' }}
+          style={{ background: '#020818' }}
           shadows
         >
           <Suspense fallback={null}>

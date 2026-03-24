@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Calendar, Dumbbell, Clock, ArrowRight, Target, Zap,
+  Calendar, Dumbbell, Clock, Target, Zap,
   ChevronDown, ChevronUp, Play, RefreshCw,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -95,14 +95,10 @@ export default function WorkoutPlanPage() {
 
   if (!plan) {
     return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <div className="glass p-8 text-center space-y-4">
-          <Target className="w-12 h-12 text-neon-cyan mx-auto" />
-          <h2 className="text-xl font-display font-bold text-white">No Plan Available</h2>
-          <p className="text-space-400 text-sm">Complete your onboarding to get a personalized workout plan.</p>
-          <Link to="/onboarding" className="btn-primary inline-flex items-center gap-2">
-            Set Up Profile <ArrowRight className="w-4 h-4" />
-          </Link>
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-space-400 font-mono text-sm">Loading your workout plan...</p>
         </div>
       </div>
     );

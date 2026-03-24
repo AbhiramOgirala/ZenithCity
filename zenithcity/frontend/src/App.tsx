@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { RootState } from './store';
+import { useSelector, useDispatch } from 'react-redux';
+import { useEffect } from 'react';
+import { RootState, AppDispatch } from './store';
+import { fetchProfile } from './store/slices/authSlice';
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
 import WorkoutPage from './pages/WorkoutPage';
@@ -25,9 +27,15 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   useSocket();
+  const dispatch = useDispatch<AppDispatch>();
   const { token } = useSelector((s: RootState) => s.auth);
   const storedToken = localStorage.getItem('zenith_token');
   const isAuthenticated = !!(token || storedToken);
+
+  // Fetch fresh profile (including points_balance) on every app load
+  useEffect(() => {
+    if (isAuthenticated) dispatch(fetchProfile());
+  }, [isAuthenticated, dispatch]);
 
   return (
     <Routes>
