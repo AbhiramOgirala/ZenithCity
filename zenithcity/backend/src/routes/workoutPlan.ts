@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { supabase } from '../config/database';
 import { WorkoutPlan, WorkoutPlanDay } from '../types';
+import { GoogleGenAI } from '@google/genai';
 
 const router = Router();
 
@@ -216,7 +217,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('fitness_goal, height_cm, weight_kg, age')
+      .select('fitness_goal, height_cm, weight_kg, target_weight_kg, time_period_weeks, time_per_day_minutes, age, gender, health_issues')
       .eq('id', req.user!.id)
       .single();
 
@@ -226,6 +227,62 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       return;
     }
 
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const prompt = `
+          You are an expert AI fitness coach and nutritionist.
+          Create a personalized, dynamic Weekly Workout and Diet Plan for a user with the following profile:
+          Goal: ${user.fitness_goal}
+          Current Weight: ${user.weight_kg} kg
+          Target Weight: ${user.target_weight_kg || 'Maintain'} kg
+          Time Period: ${user.time_period_weeks || 'Ongoing'} weeks
+          Time Available Per Day: ${user.time_per_day_minutes || 30} minutes
+          Age: ${user.age || 'Unknown'}, Gender: ${user.gender || 'Unknown'}, Height: ${user.height_cm || 'Unknown'} cm
+          Health Issues / Injuries: ${user.health_issues || 'None'}
+
+          Important constraints for the workout:
+          - Valid exercise "type" keys are strict enum: 'squat', 'pushup', 'lunge', 'plank', 'jumping_jack', 'cardio', 'running', 'walking'
+          - Keep the number of exercises per day manageable within the ${user.time_per_day_minutes || 30} minutes limit.
+          
+          Provide the output as STRICT JSON matching this exact structure:
+          {
+            "goal": "Descriptive Goal Name",
+            "level": "beginner|intermediate|advanced",
+            "days_per_week": number,
+            "diet_plan": [
+              "Detailed dietary guideline 1",
+              "Detailed dietary guideline 2",
+              "Detailed dietary guideline 3"
+            ],
+            "tips": ["Pro tip 1", "Pro tip 2", "Pro tip 3"],
+            "plan": [
+              {
+                "day": "Monday",
+                "focus": "Upper Body",
+                "exercises": [
+                  { "type": "pushup", "name": "Push-ups", "sets": 3, "reps": 10, "rest_seconds": 60, "duration_seconds": 0, "notes": "Keep form strict" }
+                ]
+              }
+            ]
+          }
+        `;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+
+        const dynamicPlan = JSON.parse(response.text || '{}');
+        res.json(dynamicPlan);
+        return;
+      } catch (geminiError) {
+        console.error('Gemini plan generation failed, falling back to rule-based:', geminiError);
+      }
+    }
+
+    // Fallback to rule-based logic
     const plan = generateWorkoutPlan(
       user.fitness_goal,
       user.age,

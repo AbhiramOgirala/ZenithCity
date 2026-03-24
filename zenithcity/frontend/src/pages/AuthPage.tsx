@@ -17,7 +17,8 @@ export default function AuthPage() {
   const [regStep, setRegStep] = useState(1);
   const [form, setForm] = useState({ 
     email: '', password: '', username: '',
-    fitness_goal: '', height_cm: '', weight_kg: '', age: '', gender: '', health_issues: ''
+    fitness_goal: '', height_cm: '', weight_kg: '', age: '', gender: '', health_issues: '',
+    target_weight_kg: '', time_period_weeks: '', time_per_day_minutes: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   
@@ -47,6 +48,9 @@ export default function AuthPage() {
           ...form,
           height_cm: form.height_cm ? parseFloat(form.height_cm) : undefined,
           weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : undefined,
+          target_weight_kg: form.target_weight_kg ? parseFloat(form.target_weight_kg) : undefined,
+          time_period_weeks: form.time_period_weeks ? parseInt(form.time_period_weeks) : undefined,
+          time_per_day_minutes: form.time_per_day_minutes ? parseInt(form.time_per_day_minutes) : undefined,
           age: form.age ? parseInt(form.age) : undefined,
         };
         const result = await dispatch(register(payload as any));
@@ -145,6 +149,24 @@ export default function AuthPage() {
       <div className="relative">
         <HeartPulse className="absolute left-3.5 top-3.5 w-4 h-4 text-space-500" />
         <input type="text" placeholder="Health issues/injuries (e.g. bad knees)" value={form.health_issues} onChange={setField('health_issues')} className="input-field pl-10 text-sm" />
+      </div>
+
+      <div className="h-px bg-space-800 w-full my-2"></div>
+      <h3 className="text-space-300 font-display font-semibold text-center text-sm">Fine-Tune Your Plan</h3>
+      
+      <div className="grid grid-cols-2 gap-3">
+        <div className="relative">
+          <Target className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-space-500" />
+          <input type="number" placeholder="Target Wt (kg)" value={form.target_weight_kg} onChange={setField('target_weight_kg')} className="input-field pl-10 text-sm" />
+        </div>
+        <div className="relative">
+          <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-space-500" />
+          <input type="number" placeholder="Weeks to goal" value={form.time_period_weeks} onChange={setField('time_period_weeks')} className="input-field pl-10 text-sm" />
+        </div>
+      </div>
+      <div className="relative">
+        <Dumbbell className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-space-500" />
+        <input type="number" placeholder="Available Workout Time (Mins / day)" value={form.time_per_day_minutes} onChange={setField('time_per_day_minutes')} className="input-field pl-10 text-sm" />
       </div>
 
       <div className="flex gap-3 mt-4">

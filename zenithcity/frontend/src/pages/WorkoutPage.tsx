@@ -8,6 +8,7 @@ import {
 import { startWorkout, completeWorkout, clearLastCompleted } from '../store/slices/workoutSlice';
 import { fetchDashboard } from '../store/slices/dashboardSlice';
 import { addToast } from '../store/slices/uiSlice';
+import { api } from '../services/api';
 import { RootState, AppDispatch } from '../store';
 import WorkoutHistory from '../components/WorkoutHistory';
 import PoseDetector from '../components/PoseDetector';
@@ -57,6 +58,7 @@ export default function WorkoutPage() {
   const { active_session, loading, last_completed } = useSelector((s: RootState) => s.workout);
 
   const [selectedExercise, setSelectedExercise] = useState('squat');
+  const [todayExercises, setTodayExercises] = useState<any[]>([]);
   const [cameraEnabled, setCameraEnabled]   = useState(false);
   const [cameraStream, setCameraStream]     = useState<MediaStream | null>(null);
   const [gpsEnabled, setGpsEnabled]         = useState(false);
@@ -76,6 +78,35 @@ export default function WorkoutPage() {
 
   // Use session id as the trigger — when it appears, start; when null, stop.
   const sessionId = active_session?.id ?? null;
+
+  useEffect(() => {
+    async function loadTodayPlan() {
+      try {
+        const data = await api.get('/workout-plan');
+        const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const todayDay = data.plan?.find((d: any) => d.day === todayStr);
+        if (todayDay && todayDay.exercises?.length > 0) {
+          // Map Gemini's exercises to our UI types
+          const matchedExercises = todayDay.exercises
+            .map((ex: any) => EXERCISE_TYPES.find(t => t.id === ex.type))
+            .filter(Boolean);
+            
+          // Remove strict duplicates
+          const uniqueExercises = Array.from(new Set(matchedExercises.map((e: any) => e.id)))
+            .map(id => matchedExercises.find((e: any) => e.id === id));
+            
+          if (uniqueExercises.length > 0) {
+            setTodayExercises(uniqueExercises);
+            setSelectedExercise(uniqueExercises[0].id);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load plan for workout module', err);
+      }
+    }
+    loadTodayPlan();
+  }, []);
 
   useEffect(() => {
     if (sessionId) {
@@ -281,10 +312,10 @@ export default function WorkoutPage() {
                 className="glass p-5"
               >
                 <h2 className="font-display text-xs font-semibold text-white uppercase tracking-widest mb-3">
-                  Choose Exercise
+                  Choose Exercise {todayExercises.length > 0 ? "(Today's Plan)" : "(Free Play)"}
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {EXERCISE_TYPES.map(ex => (
+                  {(todayExercises.length > 0 ? todayExercises : EXERCISE_TYPES).map(ex => (
                     <button
                       key={ex.id}
                       onClick={() => setSelectedExercise(ex.id)}

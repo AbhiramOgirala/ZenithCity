@@ -29,6 +29,7 @@ interface WorkoutPlan {
   level: string;
   days_per_week: number;
   plan: PlanDay[];
+  diet_plan?: string[];
   tips: string[];
 }
 
@@ -247,6 +248,29 @@ export default function WorkoutPlanPage() {
           );
         })}
       </div>
+
+      {/* Diet Plan */}
+      {plan.diet_plan && plan.diet_plan.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="glass p-5 space-y-3 border-neon-orange/20"
+        >
+          <h3 className="font-display font-semibold text-sm uppercase tracking-widest text-white flex items-center gap-2">
+            <span className="text-neon-orange text-lg">🥗</span>
+            Nutrition & Diet Guidelines
+          </h3>
+          <div className="space-y-3 mt-2">
+            {plan.diet_plan.map((dietTip, i) => (
+              <div key={i} className="flex items-start gap-3 bg-space-800/30 p-3 rounded-lg border border-space-700/50">
+                <span className="text-neon-orange mt-0.5">•</span>
+                <span className="text-sm text-space-300 leading-relaxed">{dietTip}</span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Tips */}
       {plan.tips.length > 0 && (

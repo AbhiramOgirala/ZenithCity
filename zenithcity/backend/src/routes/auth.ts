@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { cache } from '../config/redis';
+import { GoogleGenAI } from '@google/genai';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'zenithcity-secret-key';
@@ -24,7 +25,7 @@ function validateUsername(username: string): boolean {
 // POST /api/auth/register
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, username, fitness_goal, height_cm, weight_kg, age, gender, health_issues } = req.body;
+    const { email, password, username, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes } = req.body;
 
     if (!validateEmail(email)) {
       res.status(400).json({ error: 'Invalid email format' });
@@ -37,6 +38,43 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     if (!validateUsername(username)) {
       res.status(400).json({ error: 'Username must be 3-100 alphanumeric chars' });
       return;
+    }
+
+    // Gemini Goal Safety Check
+    if (process.env.GEMINI_API_KEY && fitness_goal && target_weight_kg && time_period_weeks && weight_kg) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const prompt = `
+          A user is registering for a fitness app.
+          Goal: ${fitness_goal}
+          Current Weight: ${weight_kg} kg
+          Target Weight: ${target_weight_kg} kg
+          Time Period: ${time_period_weeks} weeks
+          Time per day available: ${time_per_day_minutes || 30} minutes
+          Age: ${age || 'Unknown'}, Gender: ${gender || 'Unknown'}, Health Issues: ${health_issues || 'None'}
+          
+          Is this goal dangerously fast or overly rigorous for their parameters? (e.g. losing more than 1% of body weight per week, unrealistic strength gains in a short time, etc).
+          Respond strictly in JSON format matching this schema:
+          {
+            "isSafe": boolean,
+            "warningMessage": "If unsafe, explain why friendly but firmly, and suggest a better time period (e.g. 'Losing 5kg in 1 week is unsafe. I highly recommend extending your goal to at least 5 weeks.'). Otherwise, leave as empty string."
+          }
+        `;
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+        
+        const safetyResult = JSON.parse(response.text || '{}');
+        if (safetyResult.isSafe === false) {
+          res.status(400).json({ error: safetyResult.warningMessage });
+          return;
+        }
+      } catch (err) {
+        console.error("Gemini validation error:", err);
+        // Fail open if AI check fails to not disrupt registration
+      }
     }
 
     // Check duplicate email or username
@@ -72,6 +110,9 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
         age: age ? parseInt(age) : null,
         gender: gender || null,
         health_issues: health_issues || null,
+        target_weight_kg: target_weight_kg ? parseFloat(target_weight_kg) : null,
+        time_period_weeks: time_period_weeks ? parseInt(time_period_weeks) : null,
+        time_per_day_minutes: time_per_day_minutes ? parseInt(time_per_day_minutes) : null,
         onboarding_completed: true // True because they are onboarding during registration
       })
       .select()
@@ -162,7 +203,7 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('id, email, username, privacy_mode, battle_auto_enroll, technique_mastery_badge, points_balance, fitness_goal, height_cm, weight_kg, age, gender, health_issues, onboarding_completed, current_streak, best_streak, last_workout_date, created_at')
+      .select('id, email, username, privacy_mode, battle_auto_enroll, technique_mastery_badge, points_balance, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes, onboarding_completed, current_streak, best_streak, last_workout_date, created_at')
       .eq('id', req.user!.id)
       .single();
 
@@ -180,7 +221,7 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
 // PUT /api/auth/profile
 router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues } = req.body;
+    const { username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes } = req.body;
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
     if (username) {
@@ -198,12 +239,15 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
     if (age !== undefined) updates.age = age;
     if (gender !== undefined) updates.gender = gender;
     if (health_issues !== undefined) updates.health_issues = health_issues;
+    if (target_weight_kg !== undefined) updates.target_weight_kg = target_weight_kg;
+    if (time_period_weeks !== undefined) updates.time_period_weeks = time_period_weeks;
+    if (time_per_day_minutes !== undefined) updates.time_per_day_minutes = time_per_day_minutes;
 
     const { data: user, error } = await supabase
       .from('users')
       .update(updates)
       .eq('id', req.user!.id)
-      .select('id, email, username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues, points_balance')
+      .select('id, email, username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes, points_balance')
       .single();
 
     if (error) throw error;
