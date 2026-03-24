@@ -102,6 +102,7 @@ const authSlice = createSlice({
       .addCase(register.rejected, (s, a) => { s.loading = false; s.error = a.payload as string; })
       .addCase(fetchProfile.fulfilled, (s, a) => {
         if (s.user) s.user = { ...s.user, ...a.payload };
+        localStorage.setItem('zenith_user', JSON.stringify(a.payload));
       });
   },
 });

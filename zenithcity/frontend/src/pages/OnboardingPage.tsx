@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Zap, ArrowRight, Ruler, Scale, 
   Calendar, HeartPulse, Target, 
-  Dumbbell, Sparkles, Coffee, Utensils
+  Dumbbell, Sparkles, Coffee, Utensils, Trophy
 } from 'lucide-react';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';

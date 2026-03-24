@@ -219,7 +219,7 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
       .from('users')
       .update(updates)
       .eq('id', req.user!.id)
-      .select('id, email, username, privacy_mode, battle_auto_enroll')
+      .select('*, onboarding_completed')
       .single();
 
     if (error) throw error;
