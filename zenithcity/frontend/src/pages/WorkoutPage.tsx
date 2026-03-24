@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, Square, Zap, Camera, CameraOff, MapPin, CheckCircle,
@@ -52,9 +53,13 @@ function calcGPSDistance(coords: Array<{ latitude: number; longitude: number }>)
 
 export default function WorkoutPage() {
   const dispatch = useDispatch<AppDispatch>();
+  const [searchParams] = useSearchParams();
   const { active_session, loading, last_completed } = useSelector((s: RootState) => s.workout);
 
-  const [selectedExercise, setSelectedExercise] = useState('squat');
+  const [selectedExercise, setSelectedExercise] = useState(() => {
+    const param = searchParams.get('exercise');
+    return EXERCISE_TYPES.find(e => e.id === param) ? param! : 'squat';
+  });
   const [cameraEnabled, setCameraEnabled]   = useState(false);
   const [cameraStream, setCameraStream]     = useState<MediaStream | null>(null);
   const [gpsEnabled, setGpsEnabled]         = useState(false);
@@ -483,12 +488,6 @@ export default function WorkoutPage() {
                     Enable camera so MediaPipe AI can analyze your joint angles and verify each rep in real-time
                   </p>
                 </div>
-                {!active_session && !isGPS && (
-                  <button onClick={enableCamera} className="btn-primary text-xs px-5 py-2.5 flex items-center gap-2">
-                    <Camera className="w-3.5 h-3.5" />
-                    Enable Camera
-                  </button>
-                )}
                 {isGPS && (
                   <div className="text-center">
                     <MapPin className="w-6 h-6 text-neon-green mx-auto mb-2" />

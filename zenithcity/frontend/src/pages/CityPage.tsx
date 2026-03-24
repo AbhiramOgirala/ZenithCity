@@ -5,7 +5,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import {
   Building2, Plus, ArrowUp, Wrench, Zap, Shield, Map,
-  Layers, AlertTriangle, Lock, CheckCircle, Clock
+  Layers, AlertTriangle, Lock, CheckCircle, Clock, Sun, Moon
 } from 'lucide-react';
 import {
   fetchCity, constructBuilding, upgradeBuilding,
@@ -81,6 +81,17 @@ export default function CityPage() {
   const [selectedType, setSelectedType] = useState('house');
   const [activeTab, setActiveTab] = useState<'build' | 'buildings'>('build');
   const [constructing, setConstructing] = useState(false);
+  // 'auto' uses system time; 'day' forces day; 'night' forces night
+  const [lightMode, setLightMode] = useState<'auto' | 'day' | 'night'>('auto');
+
+  const systemHour = new Date().getHours();
+  const isDay = lightMode === 'day' || (lightMode === 'auto' && systemHour >= 6 && systemHour < 20);
+
+  const lightPreset = isDay ? 'dawn' : 'night';
+  const ambientIntensity = isDay ? 0.5 : 0.15;
+  const dirLightIntensity = isDay ? 1.8 : 0.3;
+  const dirLightColor = isDay ? '#ffffff' : '#8888ff';
+  const dirLightPos: [number, number, number] = isDay ? [15, 30, 15] : [5, 15, 5];
 
   useAutoCompleteBuildings();
 
@@ -165,20 +176,20 @@ export default function CityPage() {
           shadows
         >
           <Suspense fallback={null}>
-            <ambientLight intensity={0.25} />
-            <hemisphereLight args={['#0a1628', '#1a2a4a', 0.6]} />
+            <ambientLight intensity={ambientIntensity} />
+            <hemisphereLight args={[isDay ? '#87ceeb' : '#0a1628', isDay ? '#4a7c23' : '#1a2a4a', isDay ? 0.8 : 0.4]} />
             <directionalLight
-              position={[15, 30, 15]} intensity={1.4} castShadow
+              position={dirLightPos} intensity={dirLightIntensity} color={dirLightColor} castShadow
               shadow-mapSize={[2048, 2048]}
               shadow-camera-far={80}
               shadow-camera-left={-30} shadow-camera-right={30}
               shadow-camera-top={30}  shadow-camera-bottom={-30}
             />
-            <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={1.2} distance={45} />
-            <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={0.8} distance={40} />
+            <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={isDay ? 0.6 : 1.2} distance={45} />
+            <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={isDay ? 0.4 : 0.8} distance={40} />
             <City3D buildings={city?.buildings || []} territorySize={city?.territory_size || 100} />
             <OrbitControls enablePan maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60} />
-            <Environment preset="night" />
+            <Environment preset={lightPreset} />
           </Suspense>
         </Canvas>
 
@@ -202,6 +213,25 @@ export default function CityPage() {
             <span className={city?.decline_active ? 'text-neon-pink font-bold' : 'text-neon-green font-bold'}>
               {city?.decline_active ? 'Declining — workout now!' : 'Healthy'}
             </span>
+          </div>
+          {/* Day / Night toggle */}
+          <div className="glass-sm px-2 py-1.5 flex items-center gap-1 pointer-events-auto">
+            {(['auto', 'day', 'night'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setLightMode(mode)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono transition-all ${
+                  lightMode === mode
+                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
+                    : 'text-space-400 hover:text-white'
+                }`}
+              >
+                {mode === 'day' && <Sun className="w-3 h-3" />}
+                {mode === 'night' && <Moon className="w-3 h-3" />}
+                {mode === 'auto' && <span>⏱</span>}
+                {mode}
+              </button>
+            ))}
           </div>
         </div>
 
