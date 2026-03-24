@@ -1,15 +1,15 @@
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import {
   Building2, Plus, ArrowUp, Wrench, Zap, Shield, Map,
-  Layers, AlertTriangle, Lock, Clock, Sun, Moon
+  Layers, AlertTriangle, Lock, Clock, Sun, Moon, Trash2, X, MousePointer
 } from 'lucide-react';
 import {
   fetchCity, constructBuilding, upgradeBuilding,
-  repairBuilding, setBuildingPanelOpen
+  repairBuilding, deleteBuilding, setBuildingPanelOpen
 } from '../store/slices/citySlice';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
@@ -82,6 +82,8 @@ export default function CityPage() {
   const [selectedType, setSelectedType] = useState('house');
   const [activeTab, setActiveTab] = useState<'build' | 'buildings'>('build');
   const [constructing, setConstructing] = useState(false);
+  // placement mode: null = orbit mode, string = placing that building type
+  const [placementType, setPlacementType] = useState<string | null>(null);
   // 'auto' uses system time; 'day' forces day; 'night' forces night
   const [lightMode, setLightMode] = useState<'auto' | 'day' | 'night'>('auto');
 
@@ -101,25 +103,24 @@ export default function CityPage() {
   const selectedCost = BUILDING_TYPES.find(b => b.id === selectedType)?.cost ?? 0;
   const canAffordSelected = balance >= selectedCost;
 
-  const handleConstruct = async () => {
+  // Enter placement mode — deduct points and show ghost
+  const handleStartPlacement = () => {
     if (!canAffordSelected) {
-      const deficit = selectedCost - balance;
-      dispatch(addToast({ type: 'error', message: `Need ${deficit} more points to build this!` }));
+      dispatch(addToast({ type: 'error', message: `Need ${selectedCost - balance} more points!` }));
       return;
     }
+    setPlacementType(selectedType);
+    dispatch(setBuildingPanelOpen(false));
+  };
 
+  // Called when user clicks on the ground in placement mode
+  const handlePlace = useCallback(async (x: number, z: number) => {
+    if (!placementType) return;
+    setPlacementType(null);
     setConstructing(true);
-    // Spread buildings across a grid so they don't overlap
-    const buildingCount = city?.buildings?.length || 0;
-    const gridSize = 5;
-    const col = buildingCount % gridSize;
-    const row = Math.floor(buildingCount / gridSize);
-    const spacing = 6;
-    const x = (col - Math.floor(gridSize / 2)) * spacing + (Math.random() - 0.5);
-    const z = (row - 1) * spacing + (Math.random() - 0.5);
 
     const result = await dispatch(constructBuilding({
-      type: selectedType,
+      type: placementType,
       position_x: x,
       position_y: 0,
       position_z: z,
@@ -128,15 +129,13 @@ export default function CityPage() {
     setConstructing(false);
 
     if (result.meta.requestStatus === 'fulfilled') {
-      const bt = BUILDING_TYPES.find(b => b.id === selectedType)!;
-      dispatch(addToast({ type: 'success', message: `${bt.emoji} ${bt.label} construction started!` }));
-      // Sync the updated balance from server
+      const bt = BUILDING_TYPES.find(b => b.id === placementType)!;
+      dispatch(addToast({ type: 'success', message: `${bt.emoji} ${bt.label} placed!` }));
       dispatch(fetchProfile());
     } else {
-      const msg = (result.payload as string) || 'Construction failed';
-      dispatch(addToast({ type: 'error', message: msg }));
+      dispatch(addToast({ type: 'error', message: (result.payload as string) || 'Construction failed' }));
     }
-  };
+  }, [placementType, dispatch]);
 
   const handleUpgrade = async (buildingId: string, type: string, level: number) => {
     const result = await dispatch(upgradeBuilding(buildingId));
@@ -155,6 +154,15 @@ export default function CityPage() {
       dispatch(fetchProfile());
     } else {
       dispatch(addToast({ type: 'error', message: (result.payload as string) || 'Repair failed' }));
+    }
+  };
+
+  const handleDelete = async (buildingId: string, type: string) => {
+    const result = await dispatch(deleteBuilding(buildingId));
+    if (result.meta.requestStatus === 'fulfilled') {
+      dispatch(addToast({ type: 'success', message: `🗑️ ${type} demolished!` }));
+    } else {
+      dispatch(addToast({ type: 'error', message: (result.payload as string) || 'Delete failed' }));
     }
   };
 
@@ -188,8 +196,18 @@ export default function CityPage() {
             />
             <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={isDay ? 0.4 : 1.8} distance={50} />
             <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={isDay ? 0.3 : 1.2} distance={45} />
-            <City3D buildings={city?.buildings || []} territorySize={city?.territory_size || 100} />
-            <OrbitControls enablePan maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60} />
+            <City3D
+              buildings={city?.buildings || []}
+              territorySize={city?.territory_size || 100}
+              placementType={placementType}
+              onPlace={handlePlace}
+            />
+            <OrbitControls
+              enablePan={!placementType}
+              enableRotate={!placementType}
+              enableZoom
+              maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60}
+            />
           </Suspense>
         </Canvas>
 
@@ -243,14 +261,50 @@ export default function CityPage() {
           </div>
         </div>
 
+        {/* Placement mode banner */}
+        <AnimatePresence>
+          {placementType && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
+            >
+              <div className="glass px-6 py-3 rounded-2xl border border-neon-cyan/40 flex items-center gap-3">
+                <MousePointer className="w-4 h-4 text-neon-cyan animate-pulse" />
+                <span className="text-neon-cyan font-mono text-sm font-semibold">
+                  Click to place {BUILDING_TYPES.find(b => b.id === placementType)?.emoji} {placementType}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Cancel placement button */}
+        <AnimatePresence>
+          {placementType && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={() => setPlacementType(null)}
+              className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neon-pink/15 border border-neon-pink/40 text-neon-pink font-mono text-sm hover:bg-neon-pink/25 transition-all pointer-events-auto"
+            >
+              <X className="w-4 h-4" /> Cancel
+            </motion.button>
+          )}
+        </AnimatePresence>
+
         {/* Open panel button */}
-        <button
-          onClick={() => dispatch(setBuildingPanelOpen(!buildingPanelOpen))}
-          className="absolute bottom-4 right-4 btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          {buildingPanelOpen ? 'Close' : 'Manage City'}
-        </button>
+        {!placementType && (
+          <button
+            onClick={() => dispatch(setBuildingPanelOpen(!buildingPanelOpen))}
+            className="absolute bottom-4 right-4 btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            {buildingPanelOpen ? 'Close' : 'Manage City'}
+          </button>
+        )}
       </div>
 
       {/* Management panel */}
@@ -342,7 +396,7 @@ export default function CityPage() {
                     </div>
 
                     <button
-                      onClick={handleConstruct}
+                      onClick={handleStartPlacement}
                       disabled={constructing || !canAffordSelected}
                       className={`px-6 py-3 rounded-xl font-display font-semibold text-sm uppercase tracking-widest flex items-center gap-2 transition-all ${
                         canAffordSelected
@@ -352,9 +406,9 @@ export default function CityPage() {
                     >
                       {constructing
                         ? <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                        : <Plus className="w-4 h-4" />
+                        : <MousePointer className="w-4 h-4" />
                       }
-                      {canAffordSelected ? 'Build' : `Need ${(selectedCost - balance).toLocaleString()} more pts`}
+                      {canAffordSelected ? 'Place' : `Need ${(selectedCost - balance).toLocaleString()} more pts`}
                     </button>
                   </div>
 
@@ -387,6 +441,13 @@ export default function CityPage() {
                               <BuildingCountdown completedAt={b.construction_completed_at} />
                             </div>
                           </div>
+                          <button
+                            onClick={() => handleDelete(b.id, b.type)}
+                            className="text-xs px-2 py-1.5 rounded-lg flex items-center gap-1 bg-space-800 border border-space-700 text-space-500 hover:border-neon-pink/40 hover:text-neon-pink transition-all"
+                            title="Demolish"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       ))}
                     </>
@@ -415,6 +476,13 @@ export default function CityPage() {
                             }`}
                           >
                             <Wrench className="w-3 h-3" /> Repair
+                          </button>
+                          <button
+                            onClick={() => handleDelete(b.id, b.type)}
+                            className="text-xs px-2 py-1.5 rounded-lg flex items-center gap-1 bg-space-800 border border-space-700 text-space-500 hover:border-neon-pink/40 hover:text-neon-pink transition-all"
+                            title="Demolish"
+                          >
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       ))}
@@ -467,6 +535,13 @@ export default function CityPage() {
                                 {canUpgrade ? `${upgradeCost}pts` : <Lock className="w-3 h-3" />}
                               </button>
                             )}
+                            <button
+                              onClick={() => handleDelete(b.id, b.type)}
+                              className="text-xs px-2 py-1.5 rounded-lg flex items-center gap-1 bg-space-800 border border-space-700 text-space-500 hover:border-neon-pink/40 hover:text-neon-pink transition-all"
+                              title="Demolish"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
                         );
                       })}

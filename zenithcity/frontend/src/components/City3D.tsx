@@ -741,13 +741,80 @@ function TerritoryBoundary({ size }: { size: number }) {
   );
 }
 
+// ─── Placement Ghost ──────────────────────────────────────────────────────────
+function PlacementGhost({ type, onPlace }: { type: string; onPlace: (x: number, z: number) => void }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const { camera, gl } = useThree();
+  const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const pos = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      if (raycaster.ray.intersectPlane(plane, target)) {
+        pos.current.set(
+          Math.round(target.x / 3) * 3,
+          0,
+          Math.round(target.z / 3) * 3,
+        );
+      }
+    };
+
+    const onClick = (e: MouseEvent) => {
+      // Only left-click places
+      if (e.button !== 0) return;
+      onPlace(pos.current.x, pos.current.z);
+    };
+
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('click', onClick);
+    return () => {
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('click', onClick);
+    };
+  }, [camera, gl, plane, raycaster, target, onPlace]);
+
+  useFrame(() => {
+    if (meshRef.current) {
+      meshRef.current.position.lerp(pos.current, 0.25);
+    }
+  });
+
+  const sizes: Record<string, [number, number, number]> = {
+    house: [2.5, 2.5, 2.5], apartment: [2.5, 5, 2.5],
+    office: [2.5, 8, 2.5], park: [5, 0.2, 5], stadium: [8, 3, 8],
+  };
+  const [sw, sh, sd] = sizes[type] || [2.5, 3, 2.5];
+
+  return (
+    <mesh ref={meshRef} position={[0, sh / 2, 0]}>
+      <boxGeometry args={[sw, sh, sd]} />
+      <meshStandardMaterial color="#00F5FF" transparent opacity={0.35} wireframe={false} />
+      <meshStandardMaterial color="#00F5FF" transparent opacity={0.6} wireframe />
+    </mesh>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function City3D({
   buildings,
   territorySize = 100,
+  placementType,
+  onPlace,
 }: {
   buildings: BuildingData[];
   territorySize?: number;
+  placementType?: string | null;
+  onPlace?: (x: number, z: number) => void;
 }) {
   return (
     <group>
@@ -766,7 +833,6 @@ export default function City3D({
             ? <UnderConstruction type={b.type} />
             : <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} />
           }
-          {/* Damage pulse ring on ground */}
           {b.status === 'damaged' && (
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
               <ringGeometry args={[1.5, 2.0, 32]} />
@@ -776,6 +842,11 @@ export default function City3D({
           )}
         </group>
       ))}
+
+      {/* Placement ghost */}
+      {placementType && onPlace && (
+        <PlacementGhost type={placementType} onPlace={onPlace} />
+      )}
     </group>
   );
 }

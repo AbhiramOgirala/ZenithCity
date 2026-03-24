@@ -202,6 +202,23 @@ router.put('/buildings/:id/repair', authMiddleware, async (req: AuthRequest, res
   }
 });
 
+// DELETE /api/cities/buildings/:id
+router.delete('/buildings/:id', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { data: building } = await supabase
+      .from('buildings').select('*, cities!inner(user_id)').eq('id', req.params.id).single();
+
+    if (!building || (building.cities as any).user_id !== req.user!.id) {
+      res.status(404).json({ error: 'Building not found' }); return;
+    }
+
+    await supabase.from('buildings').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete building' });
+  }
+});
+
 // POST /api/cities/expand-territory
 router.post('/expand-territory', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {

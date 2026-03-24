@@ -83,6 +83,18 @@ export const repairBuilding = createAsyncThunk(
   }
 );
 
+export const deleteBuilding = createAsyncThunk(
+  'city/delete',
+  async (buildingId: string, { rejectWithValue }) => {
+    try {
+      await api.delete(`/cities/buildings/${buildingId}`);
+      return buildingId;
+    } catch (err: any) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 const citySlice = createSlice({
   name: 'city',
   initialState,
@@ -118,6 +130,9 @@ const citySlice = createSlice({
           const idx = s.city.buildings.findIndex(b => b.id === a.payload.id);
           if (idx >= 0) s.city.buildings[idx] = a.payload;
         }
+      })
+      .addCase(deleteBuilding.fulfilled, (s, a) => {
+        if (s.city) s.city.buildings = s.city.buildings.filter(b => b.id !== a.payload);
       });
   },
 });
