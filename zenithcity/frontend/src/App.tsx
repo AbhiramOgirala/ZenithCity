@@ -12,6 +12,7 @@ import CityPage from './pages/CityPage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import BattlesPage from './pages/BattlesPage';
 import ProfilePage from './pages/ProfilePage';
+import OnboardingPage from './pages/OnboardingPage';
 import Layout from './components/Layout';
 import ToastContainer from './components/ui/ToastContainer';
 import { useSocket } from './hooks/useSocket';
@@ -29,9 +30,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function AppContent() {
   useSocket();
   const dispatch = useDispatch<AppDispatch>();
-  const { token } = useSelector((s: RootState) => s.auth);
+  const { token, user } = useSelector((s: RootState) => s.auth);
   const storedToken = localStorage.getItem('zenith_token');
   const isAuthenticated = !!(token || storedToken);
+  const needsOnboarding = isAuthenticated && user && user.onboarding_completed === false;
 
   // Fetch fresh profile (including points_balance) on every app load
   useEffect(() => {
@@ -41,9 +43,15 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/auth" element={
-        isAuthenticated ? <Navigate to="/dashboard" replace /> : <AuthPage />
+        isAuthenticated 
+          ? (needsOnboarding ? <Navigate to="/onboarding" replace /> : <Navigate to="/dashboard" replace />) 
+          : <AuthPage />
+      } />
+      <Route path="/onboarding" element={
+        isAuthenticated ? <OnboardingPage /> : <Navigate to="/auth" replace />
       } />
       <Route path="/*" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
         <PrivateRoute>
           <Layout>
             <Routes>
@@ -59,6 +67,7 @@ function AppContent() {
             </Routes>
           </Layout>
         </PrivateRoute>
+        )
       } />
     </Routes>
   );

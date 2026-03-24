@@ -119,14 +119,14 @@ export default function WorkoutPage() {
   // Points: 0 without camera (except GPS)
   const estimatedPoints = useCallback(() => {
     if (isGPS)             return Math.floor(gpsDistance * 50);
-    if (!cameraEnabled)    return 0;
+    if (!cameraEnabled)    return Math.floor((elapsedSeconds / 60) * 5); // Half of cardio points
     if (isStrength)        return aiStats.validReps * 2;
     return Math.floor((elapsedSeconds / 60) * 10);
   }, [cameraEnabled, isStrength, isGPS, aiStats.validReps, elapsedSeconds, gpsDistance]);
 
   const handleStartWorkout = async () => {
     if (!cameraEnabled && !isGPS) {
-      dispatch(addToast({ type: 'warning', message: '📷 No camera = no points. Enable AI camera to earn points.' }));
+      dispatch(addToast({ type: 'warning', message: '📷 Manual mode (no AI) will earn 5 pts/min only.' }));
     }
     const result = await dispatch(startWorkout({
       exercise_type: selectedExercise,
@@ -220,8 +220,15 @@ export default function WorkoutPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-display font-bold text-white">Workout</h1>
-        <p className="text-space-400 text-sm mt-0.5">AI verifies your form — only correct reps earn points</p>
+        <h1 className="text-2xl font-display font-bold text-white uppercase tracking-wider">
+          {searchParams.get('exercise') ? 'Planned Session' : 'Active Workout'}
+        </h1>
+        <p className="text-space-400 text-sm mt-0.5">
+          {searchParams.get('exercise') 
+            ? `Targeting your ${exerciseMeta.label} for your weekly plan`
+            : 'AI verifies your form — only correct reps earn points'
+          }
+        </p>
       </div>
 
       {/* Workout completed card */}
@@ -265,7 +272,7 @@ export default function WorkoutPage() {
 
           {/* Exercise selector (only before session starts) */}
           <AnimatePresence>
-            {!active_session && (
+            {!active_session && !searchParams.get('exercise') && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -381,7 +388,7 @@ export default function WorkoutPage() {
                   {!cameraEnabled && !isGPS && (
                     <div className="flex items-center gap-2 text-xs text-neon-orange p-2.5 bg-neon-orange/8 border border-neon-orange/20 rounded-lg">
                       <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                      Camera off — no points will be earned this session
+                      Manual mode — partial points (5 pts/min) will be earned
                     </div>
                   )}
 
@@ -438,7 +445,7 @@ export default function WorkoutPage() {
                 >
                   {loading
                     ? <div className="w-4 h-4 border-2 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
-                    : <><Play className="w-4 h-4" />Start Workout</>
+                    : <><Play className="w-4 h-4" />Start {searchParams.get('exercise') ? exerciseMeta.label : 'Workout'}</>
                   }
                 </button>
               </div>
@@ -464,7 +471,7 @@ export default function WorkoutPage() {
             )}
           </div>
 
-          <WorkoutHistory />
+          {!searchParams.get('exercise') && <WorkoutHistory />}
         </div>
 
         {/* ─── RIGHT: Camera / Pose Detection ─── */}
@@ -521,7 +528,7 @@ export default function WorkoutPage() {
                 <p className={cameraEnabled ? 'text-neon-green' : 'text-neon-orange'}>
                   {cameraEnabled
                     ? 'AI active — joint angles verified in real-time'
-                    : 'Camera required to earn points (no manual mode)'
+                    : 'Manual mode — reduced points for unverified forms'
                   }
                 </p>
               </div>

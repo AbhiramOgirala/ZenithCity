@@ -108,6 +108,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
     const force = req.query.force === 'true';
     const cacheKey = `workout_plan:${userId}`;
 
+    // 1. Try Cache (Redis)
     if (!force) {
       const cached = await cache.get(cacheKey);
       if (cached) {
@@ -116,11 +117,19 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       }
     }
 
+    // 2. Try Supabase (Persistent)
     const { data: user } = await supabase
       .from('users')
-      .select('fitness_goal, fitness_level, age, weight_kg, height_cm')
+      .select('fitness_goal, fitness_level, age, weight_kg, height_cm, current_plan_json')
       .eq('id', userId)
       .single();
+
+    if (!force && user?.current_plan_json) {
+      const plan = user.current_plan_json;
+      await cache.set(cacheKey, JSON.stringify(plan), 604800); // Backfill Redis
+      res.json(plan);
+      return;
+    }
 
     const goal = user?.fitness_goal || 'general_fitness';
     const level = user?.fitness_level || 'beginner';
@@ -205,7 +214,12 @@ Instructions for plan array:
         
         // Ensure diet_plan exists in response
         if (aiPlan.diet_plan && aiPlan.plan) {
-          await cache.set(cacheKey, JSON.stringify(aiPlan), 604800); // Cache for 7 days
+          // Persist to Supabase & Redis
+          await Promise.all([
+            cache.set(cacheKey, JSON.stringify(aiPlan), 604800),
+            supabase.from('users').update({ current_plan_json: aiPlan }).eq('id', userId)
+          ]);
+
           res.json(aiPlan);
           return;
         }
@@ -220,6 +234,34 @@ Instructions for plan array:
     console.error('Workout plan error:', err);
     res.status(500).json({ error: 'Failed to generate workout plan' });
   }
+});
+
+// POST /api/workout-plan/upgrade
+// Upgrades fitness level and force-regenerates a next-level plan
+router.post('/upgrade', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        const { data: user } = await supabase.from('users').select('fitness_level').eq('id', userId).single();
+        
+        const levels = ['beginner', 'intermediate', 'advanced'];
+        const currentLevel = user?.fitness_level || 'beginner';
+        const currentIndex = levels.indexOf(currentLevel.toLowerCase());
+        
+        if (currentIndex < levels.length - 1) {
+            const nextLevel = levels[currentIndex + 1];
+            await supabase.from('users').update({ 
+                fitness_level: nextLevel,
+                updated_at: new Date().toISOString()
+            }).eq('id', userId);
+            
+            // Success - client should call GET /?force=true next
+            res.json({ success: true, from: currentLevel, to: nextLevel });
+        } else {
+            res.status(400).json({ error: 'You are already at the Advanced level!' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to upgrade level' });
+    }
 });
 
 export default router;

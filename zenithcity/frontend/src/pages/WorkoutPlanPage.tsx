@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar, Dumbbell, Clock, Target, Zap,
-  ChevronDown, ChevronUp, Play, RefreshCw,
+  ChevronDown, ChevronUp, Play, RefreshCw, Trophy,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
@@ -54,15 +54,18 @@ export default function WorkoutPlanPage() {
   const [loading, setLoading] = useState(true);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
-  const fetchPlan = async () => {
+  const fetchPlan = async (forceRefresh = false) => {
     try {
-      const data = await api.get('/workout-plan');
+      const data = await api.get(`/workout-plan${forceRefresh ? '?force=true' : ''}`);
       setPlan(data);
-      const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-      const todayDay = data.plan.find((d: PlanDay) => d.day === today);
-      if (todayDay) setExpandedDay(today);
-      else if (data.plan.length > 0) setExpandedDay(data.plan[0].day);
+      if (!expandedDay) {
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const todayDay = data.plan.find((d: PlanDay) => d.day === today);
+        if (todayDay) setExpandedDay(today);
+        else if (data.plan.length > 0) setExpandedDay(data.plan[0].day);
+      }
     } catch (err) {
       console.error('Failed to fetch plan:', err);
     } finally {
@@ -74,8 +77,19 @@ export default function WorkoutPlanPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchPlan();
+    await fetchPlan(true);
     setRefreshing(false);
+  };
+
+  const handleUpgrade = async () => {
+    if (!window.confirm(`Ready to upgrade your fitness level to the next tier?`)) return;
+    setUpgrading(true);
+    try {
+      await api.post('/workout-plan/upgrade', {});
+      await fetchPlan(true); // Regenerate plan for next level
+    } finally {
+      setUpgrading(false);
+    }
   };
 
   const handleExerciseClick = (exerciseType: string) => {
@@ -242,14 +256,17 @@ export default function WorkoutPlanPage() {
                         </motion.button>
                       ))}
 
-                      {isToday && (
-                        <Link
-                          to="/workout"
-                          className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-2"
-                        >
-                          <Dumbbell className="w-4 h-4" /> Start Today's Workout
-                        </Link>
-                      )}
+                      {isToday && (() => {
+                        const firstEx = day.exercises[0];
+                        return (
+                          <Link
+                            to={`/workout?exercise=${firstEx?.type || 'squat'}`}
+                            className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-2 shadow-lg shadow-neon-cyan/10"
+                          >
+                            <Dumbbell className="w-4 h-4" /> Start Today's Plan
+                          </Link>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -302,6 +319,30 @@ export default function WorkoutPlanPage() {
               </div>
             ))}
           </div>
+        </motion.div>
+      )}
+
+      {/* Upgrade Call to Action */}
+      {plan.level !== 'advanced' && (
+        <motion.div
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           className="glass p-6 text-center space-y-4 border border-neon-cyan/20 bg-neon-cyan/5"
+        >
+          <div className="flex flex-col items-center gap-2">
+            <Trophy className="w-10 h-10 text-neon-yellow" />
+            <h3 className="text-lg font-display font-bold text-white uppercase tracking-wider">Ready for the next challenge?</h3>
+            <p className="text-sm text-space-400 max-w-md mx-auto">
+              If you have smashed this week's goals, upgrade your account to the <span className="text-neon-cyan uppercase font-bold">{plan.level === 'beginner' ? 'Intermediate' : 'Advanced'}</span> level to get more intense AI-generated plans.
+            </p>
+          </div>
+          <button 
+            onClick={handleUpgrade}
+            disabled={upgrading}
+            className="btn-primary px-8 py-3 flex items-center gap-2 mx-auto"
+          >
+            {upgrading ? <LoadingSpinner size="sm" /> : <><Zap className="w-4 h-4" /> LEVEL UP YOUR AI PLAN</>}
+          </button>
         </motion.div>
       )}
     </div>

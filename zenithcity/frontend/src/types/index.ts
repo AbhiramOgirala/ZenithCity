@@ -9,6 +9,7 @@ export interface User {
   pointsBalance: number;
   totalPointsEarned: number;
   fitness_goal?: string;
+  fitness_level?: string;
   height_cm?: number;
   weight_kg?: number;
   age?: number;
@@ -17,6 +18,8 @@ export interface User {
   target_weight_kg?: number;
   time_period_weeks?: number;
   time_per_day_minutes?: number;
+  current_plan_json?: any;
+  diet_preference?: string;
   onboarding_completed?: boolean;
   current_streak?: number;
   best_streak?: number;

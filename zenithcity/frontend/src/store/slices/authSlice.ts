@@ -9,6 +9,7 @@ interface User {
   technique_mastery_badge?: boolean;
   privacy_mode?: boolean;
   battle_auto_enroll?: boolean;
+  fitness_level?: string;
   fitness_goal?: string;
   height_cm?: number;
   weight_kg?: number;
@@ -18,6 +19,8 @@ interface User {
   target_weight_kg?: number;
   time_period_weeks?: number;
   time_per_day_minutes?: number;
+  onboarding_completed?: boolean;
+  diet_preference?: string;
 }
 
 interface AuthState {

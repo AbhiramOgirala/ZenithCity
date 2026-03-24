@@ -16,6 +16,7 @@ export default function ProfilePage() {
   const [battleAutoEnroll, setBattleAutoEnroll] = useState(user?.battle_auto_enroll !== false);
   
   const [fitnessGoal, setFitnessGoal] = useState(user?.fitness_goal || 'weight_loss');
+  const [fitnessLevel, setFitnessLevel] = useState(user?.fitness_level || 'beginner');
   const [height, setHeight] = useState<string | number>(user?.height_cm || '');
   const [weight, setWeight] = useState<string | number>(user?.weight_kg || '');
   const [age, setAge] = useState<string | number>(user?.age || '');
@@ -36,6 +37,7 @@ export default function ProfilePage() {
       setPrivacyMode(user.privacy_mode || false);
       setBattleAutoEnroll(user.battle_auto_enroll !== false);
       if (user.fitness_goal) setFitnessGoal(user.fitness_goal);
+      if (user.fitness_level) setFitnessLevel(user.fitness_level);
       if (user.height_cm) setHeight(user.height_cm);
       if (user.weight_kg) setWeight(user.weight_kg);
       if (user.age) setAge(user.age);
@@ -52,7 +54,7 @@ export default function ProfilePage() {
     try {
       await api.put('/auth/profile', { 
         username, privacy_mode: privacyMode, battle_auto_enroll: battleAutoEnroll,
-        fitness_goal: fitnessGoal, height_cm: height ? Number(height) : null,
+        fitness_goal: fitnessGoal, fitness_level: fitnessLevel, height_cm: height ? Number(height) : null,
         weight_kg: weight ? Number(weight) : null, age: age ? Number(age) : null,
         gender: gender || null, health_issues: healthIssues || null,
         target_weight_kg: targetWeight ? Number(targetWeight) : null,
@@ -116,19 +118,36 @@ export default function ProfilePage() {
         <h3 className="font-display font-semibold text-sm text-neon-orange flex items-center gap-2 mb-4"><Zap className="w-4 h-4" /> Customized AI Params</h3>
         
         <div className="grid sm:grid-cols-2 gap-4 mb-4">
-          <div><label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2">Fitness Goal</label><select value={fitnessGoal} onChange={e => setFitnessGoal(e.target.value)} className="input-field appearance-none bg-space-900 border border-space-700/50 text-white rounded-xl"><option value="weight_loss">Weight Loss</option><option value="strength">Strength Building</option><option value="endurance">Endurance Training</option></select></div>
-          <div><label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2">Gender</label><select value={gender} onChange={e => setGender(e.target.value)} className="input-field appearance-none bg-space-900 border border-space-700/50 text-white rounded-xl"><option value="" disabled>Select...</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+          <div>
+            <label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2">Fitness Goal</label>
+            <select value={fitnessGoal} onChange={e => setFitnessGoal(e.target.value)} className="input-field appearance-none bg-space-900 border border-space-700/50 text-white rounded-xl">
+              <option value="weight_loss">Weight Loss</option>
+              <option value="strength">Strength Building</option>
+              <option value="muscle_gain">Muscle Gain</option>
+              <option value="endurance">Endurance Training</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2 text-neon-cyan">Fitness Level</label>
+            <select value={fitnessLevel} onChange={e => setFitnessLevel(e.target.value)} className="input-field appearance-none bg-space-900 border border-neon-cyan/20 text-white rounded-xl ring-1 ring-neon-cyan/10">
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </div>
         </div>
 
         <div className="grid sm:grid-cols-3 gap-4 mb-4">
+          <div><label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Gender</label><div className="relative"><select value={gender} onChange={e => setGender(e.target.value)} className="input-field appearance-none bg-space-900 border border-space-700/50 text-white rounded-xl"><option value="" disabled>Select...</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div></div>
           <div><label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Height (cm)</label><div className="relative"><Ruler className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" /><input type="number" value={height} onChange={e => setHeight(e.target.value)} className="input-field pl-8" /></div></div>
           <div><label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Weight (kg)</label><div className="relative"><Weight className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" /><input type="number" value={weight} onChange={e => setWeight(e.target.value)} className="input-field pl-8" /></div></div>
-          <div><label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Age</label><div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" /><input type="number" value={age} onChange={e => setAge(e.target.value)} className="input-field pl-8" /></div></div>
         </div>
-
         <div className="grid sm:grid-cols-3 gap-4 mb-4">
+          <div><label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Age</label><div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" /><input type="number" value={age} onChange={e => setAge(e.target.value)} className="input-field pl-8" /></div></div>
           <div><label className="block text-[10px] font-mono text-neon-orange uppercase tracking-widest mb-2">Target Wt (kg)</label><input type="number" value={targetWeight} onChange={e => setTargetWeight(e.target.value)} className="input-field border-neon-orange/20" /></div>
           <div><label className="block text-[10px] font-mono text-neon-orange uppercase tracking-widest mb-2">Weeks</label><input type="number" value={timePeriod} onChange={e => setTimePeriod(e.target.value)} className="input-field border-neon-orange/20" /></div>
+        </div>
+        <div className="grid sm:grid-cols-1 gap-4 mb-4">
           <div><label className="block text-[10px] font-mono text-neon-orange uppercase tracking-widest mb-2">Mins/Day</label><input type="number" value={timePerDay} onChange={e => setTimePerDay(e.target.value)} className="input-field border-neon-orange/20" /></div>
         </div>
 
