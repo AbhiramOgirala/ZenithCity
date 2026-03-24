@@ -397,97 +397,247 @@ function Park({ level, damaged }: { level: number; damaged: boolean }) {
 
 // ─── STADIUM ─────────────────────────────────────────────────────────────────
 function Stadium({ level, damaged }: { level: number; damaged: boolean }) {
-  const s = 0.9 + level * 0.22;
-  const outerR = 4.5 * s, innerR = 3.0 * s, ringH = 2.2 * s;
-  const lightCount = 8 + level * 2;
+  const s = 0.9 + level * 0.18;
+  const outerR = 5.5 * s;
+  const innerR = 3.6 * s;
+  const wallH  = 3.2 * s;
+  const towerH = wallH + 4.5 * s;
+  const towerCount = 4 + level * 2;
 
-  const standsTex = useMemo(() => {
+  // Crowd texture — rows of colored seats
+  const crowdTex = useMemo(() => {
     const c = document.createElement('canvas');
-    c.width = 256; c.height = 64;
+    c.width = 512; c.height = 128;
     const ctx = c.getContext('2d')!;
-    const colors = ['#F44336','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
-    for (let i = 0; i < 256; i += 4) {
-      ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-      ctx.fillRect(i, 0, 4, 64);
+    const seatColors = ['#c0392b','#2980b9','#27ae60','#f39c12','#8e44ad','#16a085','#e74c3c','#3498db'];
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, 512, 128);
+    // Seat rows
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 64; col++) {
+        const lit = Math.random() > 0.15;
+        ctx.fillStyle = lit ? seatColors[Math.floor(Math.random() * seatColors.length)] : '#111';
+        ctx.fillRect(col * 8 + 1, row * 15 + 2, 6, 11);
+      }
     }
-    return new THREE.CanvasTexture(c);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }, []);
+
+  // Concrete facade texture
+  const concreteTex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#d0cfc8';
+    ctx.fillRect(0, 0, 256, 256);
+    // Horizontal bands (floors)
+    for (let y = 0; y < 256; y += 32) {
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(0, y, 256, 2);
+    }
+    // Vertical columns
+    for (let x = 0; x < 256; x += 24) {
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fillRect(x, 0, 2, 256);
+    }
+    // Arch openings
+    for (let x = 12; x < 256; x += 24) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.arc(x, 28, 8, Math.PI, 0);
+      ctx.rect(x - 8, 28, 16, 20);
+      ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(6, 1);
+    return t;
   }, []);
 
   return (
     <group>
-      {/* Outer wall ring */}
-      <mesh position={[0, ringH / 2, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[outerR, outerR * 1.04, ringH, 48]} />
-        <meshStandardMaterial color={damaged ? '#666' : '#ECEFF1'} roughness={0.5} metalness={0.1} />
+      {/* ── Foundation ring ── */}
+      <mesh position={[0, 0.15, 0]} receiveShadow>
+        <cylinderGeometry args={[outerR + 0.5, outerR + 0.7, 0.3, 64]} />
+        <meshStandardMaterial color="#888880" roughness={0.9} />
       </mesh>
 
-      {/* Stands interior (visible from above) */}
-      <mesh position={[0, ringH * 0.6, 0]}>
-        <cylinderGeometry args={[innerR * 0.98, outerR * 0.92, ringH * 0.5, 48, 1, true]} />
-        <meshStandardMaterial side={THREE.BackSide} map={standsTex} roughness={0.9} />
+      {/* ── Outer facade wall (multi-tier) ── */}
+      {[0, 1, 2].map(tier => {
+        const r = outerR - tier * 0.15;
+        const yBase = 0.3 + tier * (wallH / 3);
+        const h = wallH / 3 + 0.1;
+        return (
+          <mesh key={tier} position={[0, yBase + h / 2, 0]} castShadow receiveShadow>
+            <cylinderGeometry args={[r, r + 0.1, h, 64, 1, true]} />
+            <meshStandardMaterial
+              color={damaged ? '#777' : '#ccc9be'}
+              map={damaged ? undefined : concreteTex}
+              roughness={0.7} metalness={0.05} side={THREE.DoubleSide}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* ── Roof canopy (partial — covers upper stands) ── */}
+      <mesh position={[0, wallH + 0.4, 0]} castShadow>
+        <cylinderGeometry args={[outerR * 0.98, outerR * 0.72, 0.35, 64, 1, true]} />
+        <meshStandardMaterial color={damaged ? '#555' : '#b0a898'} roughness={0.5} metalness={0.1} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Canopy underside — dark */}
+      <mesh position={[0, wallH + 0.22, 0]}>
+        <cylinderGeometry args={[outerR * 0.97, outerR * 0.71, 0.05, 64, 1, true]} />
+        <meshStandardMaterial color="#333" roughness={0.9} side={THREE.BackSide} />
       </mesh>
 
-      {/* Field */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} receiveShadow>
-        <circleGeometry args={[innerR * 0.97, 48]} />
-        <meshStandardMaterial color={damaged ? '#3A4A30' : '#4CAF50'} roughness={0.9} />
-      </mesh>
-
-      {/* Field markings */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
-        <ringGeometry args={[innerR * 0.3, innerR * 0.32, 32]} />
-        <meshStandardMaterial color="white" roughness={0.9} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
-        <planeGeometry args={[innerR * 1.8, 0.1]} />
-        <meshStandardMaterial color="white" roughness={0.9} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, Math.PI / 2, 0]} position={[0, 0.06, 0]}>
-        <planeGeometry args={[innerR * 1.8, 0.1]} />
-        <meshStandardMaterial color="white" roughness={0.9} />
-      </mesh>
-
-      {/* Concourse rim */}
-      <mesh position={[0, ringH + 0.15, 0]} castShadow>
-        <torusGeometry args={[(outerR + innerR * 0.6) / 1.8, 0.28, 8, 48]} />
-        <meshStandardMaterial color="#FF6B35" roughness={0.3} metalness={0.4}
-          emissive={damaged ? '#000' : '#FF6B35'} emissiveIntensity={0.1} />
-      </mesh>
-
-      {/* Tiered seating rings */}
-      {[0.3, 0.6, 0.85].map((frac, i) => (
-        <mesh key={i} position={[0, ringH * (i * 0.25 + 0.1), 0]}>
-          <torusGeometry args={[innerR + (outerR - innerR) * frac, 0.12, 4, 48]} />
-          <meshStandardMaterial color="#CFD8DC" roughness={0.7} />
+      {/* ── Tiered seating bowl (3 tiers) ── */}
+      {[
+        { r: outerR * 0.92, innerRatio: 0.72, y: wallH * 0.15, h: wallH * 0.32 },
+        { r: outerR * 0.80, innerRatio: 0.65, y: wallH * 0.42, h: wallH * 0.28 },
+        { r: outerR * 0.68, innerRatio: 0.58, y: wallH * 0.65, h: wallH * 0.22 },
+      ].map((tier, i) => (
+        <mesh key={i} position={[0, tier.y + tier.h / 2, 0]}>
+          <cylinderGeometry args={[tier.r * tier.innerRatio, tier.r, tier.h, 64, 1, true]} />
+          <meshStandardMaterial map={crowdTex} roughness={0.95} side={THREE.BackSide} />
         </mesh>
       ))}
 
-      {/* Floodlight towers */}
-      {Array.from({ length: lightCount }).map((_, i) => {
-        const a = (i / lightCount) * Math.PI * 2;
-        const lx = Math.cos(a) * (outerR + 0.4);
-        const lz = Math.sin(a) * (outerR + 0.4);
+      {/* ── Playing field ── */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.32, 0]} receiveShadow>
+        <circleGeometry args={[innerR, 64]} />
+        <meshStandardMaterial color={damaged ? '#3a4a30' : '#2d8a3e'} roughness={0.95} />
+      </mesh>
+
+      {/* Field — pitch lines */}
+      {!damaged && (
+        <>
+          {/* Centre circle */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.33, 0]}>
+            <ringGeometry args={[innerR * 0.22, innerR * 0.235, 48]} />
+            <meshStandardMaterial color="white" roughness={0.9} />
+          </mesh>
+          {/* Centre spot */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.33, 0]}>
+            <circleGeometry args={[0.12, 16]} />
+            <meshStandardMaterial color="white" roughness={0.9} />
+          </mesh>
+          {/* Halfway line */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.33, 0]}>
+            <planeGeometry args={[innerR * 1.85, 0.08]} />
+            <meshStandardMaterial color="white" roughness={0.9} />
+          </mesh>
+          {/* Penalty boxes */}
+          {[-1, 1].map(side => (
+            <group key={side}>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[side * innerR * 0.72, 0.33, 0]}>
+                <planeGeometry args={[0.08, innerR * 0.7]} />
+                <meshStandardMaterial color="white" roughness={0.9} />
+              </mesh>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[side * (innerR * 0.72 - 0.04), 0.33, 0]}>
+                <planeGeometry args={[innerR * 0.28, 0.08]} />
+                <meshStandardMaterial color="white" roughness={0.9} />
+              </mesh>
+            </group>
+          ))}
+          {/* Goal posts */}
+          {[-1, 1].map(side => (
+            <group key={side} position={[side * innerR * 0.93, 0.32, 0]}>
+              <mesh position={[0, 0.6, -0.55]} castShadow>
+                <cylinderGeometry args={[0.04, 0.04, 1.2, 6]} />
+                <meshStandardMaterial color="white" metalness={0.6} roughness={0.3} />
+              </mesh>
+              <mesh position={[0, 0.6, 0.55]} castShadow>
+                <cylinderGeometry args={[0.04, 0.04, 1.2, 6]} />
+                <meshStandardMaterial color="white" metalness={0.6} roughness={0.3} />
+              </mesh>
+              <mesh position={[0, 1.2, 0]} castShadow rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.04, 0.04, 1.1, 6]} />
+                <meshStandardMaterial color="white" metalness={0.6} roughness={0.3} />
+              </mesh>
+            </group>
+          ))}
+        </>
+      )}
+
+      {/* ── Corner floodlight towers ── */}
+      {Array.from({ length: towerCount }).map((_, i) => {
+        const angle = (i / towerCount) * Math.PI * 2 + Math.PI / towerCount;
+        const tx = Math.cos(angle) * (outerR + 0.8);
+        const tz = Math.sin(angle) * (outerR + 0.8);
+        const th = towerH;
         return (
-          <group key={i} position={[lx, 0, lz]}>
-            <mesh position={[0, ringH + 1.8, 0]} castShadow>
-              <cylinderGeometry args={[0.06, 0.09, ringH + 3.5, 4]} />
-              <meshStandardMaterial color="#90A4AE" metalness={0.7} roughness={0.2} />
+          <group key={i} position={[tx, 0, tz]}>
+            {/* Tower shaft */}
+            <mesh position={[0, th / 2, 0]} castShadow>
+              <boxGeometry args={[0.22, th, 0.22]} />
+              <meshStandardMaterial color="#607D8B" metalness={0.7} roughness={0.3} />
             </mesh>
-            <mesh position={[0, ringH + 3.6, 0]}>
-              <boxGeometry args={[0.6, 0.1, 0.35]} />
-              <meshStandardMaterial color="#FAFAFA"
-                emissive={damaged ? '#000' : '#FFFDE7'} emissiveIntensity={0.8} />
+            {/* Cross brace */}
+            <mesh position={[0, th * 0.6, 0]} rotation={[0, angle, 0]}>
+              <boxGeometry args={[0.08, 0.08, 0.9]} />
+              <meshStandardMaterial color="#546E7A" metalness={0.6} roughness={0.4} />
             </mesh>
-            {!damaged && (
-              <pointLight position={[0, ringH + 3.7, 0]}
-                color="#FFF9C4" intensity={0.8} distance={10} />
-            )}
+            {/* Light bar housing */}
+            <mesh position={[0, th + 0.12, 0]} castShadow>
+              <boxGeometry args={[1.4, 0.18, 0.45]} />
+              <meshStandardMaterial color="#37474F" metalness={0.5} roughness={0.4} />
+            </mesh>
+            {/* Individual lamp units */}
+            {[-0.45, 0, 0.45].map((ox, li) => (
+              <group key={li} position={[ox, th + 0.12, 0]}>
+                <mesh>
+                  <boxGeometry args={[0.3, 0.12, 0.3]} />
+                  <meshStandardMaterial
+                    color="#FFFDE7"
+                    emissive={damaged ? '#000' : '#FFF9C4'}
+                    emissiveIntensity={damaged ? 0 : 2.5}
+                    roughness={0.1}
+                  />
+                </mesh>
+                {!damaged && (
+                  <spotLight
+                    position={[0, 0, 0]}
+                    target-position={[
+                      -tx * 0.6,
+                      -th,
+                      -tz * 0.6,
+                    ]}
+                    color="#FFF8E1"
+                    intensity={8}
+                    distance={towerH * 3}
+                    angle={0.45}
+                    penumbra={0.4}
+                    castShadow={false}
+                  />
+                )}
+              </group>
+            ))}
           </group>
         );
       })}
 
+      {/* ── Scoreboard ── */}
+      <group position={[0, wallH * 0.7, -(outerR * 0.88)]}>
+        <mesh castShadow>
+          <boxGeometry args={[2.8, 1.4, 0.15]} />
+          <meshStandardMaterial color="#111" roughness={0.8} />
+        </mesh>
+        <mesh position={[0, 0, 0.09]}>
+          <boxGeometry args={[2.5, 1.1, 0.02]} />
+          <meshStandardMaterial
+            color={damaged ? '#222' : '#001a00'}
+            emissive={damaged ? '#000' : '#00ff44'}
+            emissiveIntensity={damaged ? 0 : 0.15}
+            roughness={0.5}
+          />
+        </mesh>
+      </group>
+
+      {/* ── Ambient field light ── */}
       {!damaged && (
-        <pointLight position={[0, ringH, 0]} color="#FF8C00" intensity={1.2} distance={16} />
+        <pointLight position={[0, wallH * 0.5, 0]} color="#e8f5e9" intensity={0.6} distance={innerR * 2.5} />
       )}
     </group>
   );
@@ -684,21 +834,58 @@ function CityGround() {
 }
 
 function StreetLamp({ x, z }: { x: number; z: number }) {
+  const beamRef = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    if (beamRef.current) {
+      const mat = beamRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.04 + Math.sin(clock.elapsedTime * 0.7 + x) * 0.015;
+    }
+  });
+
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, 2.2, 0]} castShadow>
-        <cylinderGeometry args={[0.035, 0.05, 4.4, 5]} />
+      {/* Pole */}
+      <mesh position={[0, 2.5, 0]} castShadow>
+        <cylinderGeometry args={[0.04, 0.06, 5, 6]} />
+        <meshStandardMaterial color="#37474F" metalness={0.85} roughness={0.2} />
+      </mesh>
+      {/* Arm */}
+      <mesh position={[0.35, 4.9, 0]} rotation={[0, 0, 0.22]} castShadow>
+        <cylinderGeometry args={[0.025, 0.03, 0.75, 5]} />
         <meshStandardMaterial color="#455A64" metalness={0.8} roughness={0.2} />
       </mesh>
-      <mesh position={[0.25, 4.3, 0]} rotation={[0, 0, 0.18]}>
-        <cylinderGeometry args={[0.025, 0.03, 0.55, 4]} />
-        <meshStandardMaterial color="#546E7A" metalness={0.8} roughness={0.2} />
+      {/* Lamp housing */}
+      <mesh position={[0.6, 4.85, 0]} castShadow>
+        <boxGeometry args={[0.28, 0.12, 0.18]} />
+        <meshStandardMaterial color="#263238" metalness={0.6} roughness={0.4} />
       </mesh>
-      <mesh position={[0.42, 4.35, 0]}>
-        <sphereGeometry args={[0.12, 8, 8]} />
-        <meshStandardMaterial color="#FFFDE7" emissive="#FFF9C4" emissiveIntensity={1.2} />
+      {/* Lamp bulb glow */}
+      <mesh position={[0.6, 4.79, 0]}>
+        <boxGeometry args={[0.22, 0.04, 0.14]} />
+        <meshStandardMaterial color="#FFF9C4" emissive="#FFF176" emissiveIntensity={3} roughness={0.1} />
       </mesh>
-      <pointLight position={[0.42, 4.3, 0]} color="#FFF8E1" intensity={0.7} distance={14} decay={2} />
+      {/* Light cone beam (volumetric illusion) */}
+      <mesh ref={beamRef} position={[0.6, 3.6, 0]} rotation={[0, 0, 0]}>
+        <coneGeometry args={[1.4, 2.5, 16, 1, true]} />
+        <meshBasicMaterial color="#fffde7" transparent opacity={0.055} side={THREE.FrontSide} depthWrite={false} />
+      </mesh>
+      {/* Ground light pool */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.6, 0.02, 0]}>
+        <circleGeometry args={[1.8, 24]} />
+        <meshBasicMaterial color="#fff9c4" transparent opacity={0.08} depthWrite={false} />
+      </mesh>
+      {/* Actual light source */}
+      <spotLight
+        position={[0.6, 4.78, 0]}
+        angle={0.55}
+        penumbra={0.5}
+        intensity={12}
+        distance={18}
+        color="#FFF8E1"
+        castShadow={false}
+        target-position={[0.6, 0, 0]}
+      />
     </group>
   );
 }
