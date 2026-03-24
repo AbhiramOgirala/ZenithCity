@@ -3,6 +3,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { supabase } from '../config/database';
 import { WorkoutPlan, WorkoutPlanDay } from '../types';
 import { GoogleGenAI } from '@google/genai';
+import { cache } from '../config/redis';
 
 const router = Router();
 
@@ -227,6 +228,19 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       return;
     }
 
+    const CACHE_KEY = `workout_plan:${req.user!.id}`;
+    
+    // Explicit plan regeneration logic
+    if (req.query.force === 'true') {
+      await cache.del(CACHE_KEY);
+    } else {
+      const cachedPlanStr = await cache.get(CACHE_KEY);
+      if (cachedPlanStr) {
+        res.json(JSON.parse(cachedPlanStr));
+        return;
+      }
+    }
+
     if (process.env.GEMINI_API_KEY) {
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -250,12 +264,16 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
             "goal": "Descriptive Goal Name",
             "level": "beginner|intermediate|advanced",
             "days_per_week": number,
-            "diet_plan": [
-              "Detailed dietary guideline 1",
-              "Detailed dietary guideline 2",
-              "Detailed dietary guideline 3"
-            ],
-            "tips": ["Pro tip 1", "Pro tip 2", "Pro tip 3"],
+            "diet_plan": {
+              "Monday": { "breakfast": "Meal desc + time", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." },
+              "Tuesday": { "breakfast": "...", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." },
+              "Wednesday": { "breakfast": "...", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." },
+              "Thursday": { "breakfast": "...", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." },
+              "Friday": { "breakfast": "...", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." },
+              "Saturday": { "breakfast": "...", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." },
+              "Sunday": { "breakfast": "...", "mid_snack": "...", "lunch": "...", "snacks": "...", "dinner": "..." }
+            },
+            "tips": ["Pro tip 1", "Pro tip 2"],
             "plan": [
               {
                 "day": "Monday",
@@ -275,6 +293,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
         });
 
         const dynamicPlan = JSON.parse(response.text || '{}');
+        await cache.set(CACHE_KEY, JSON.stringify(dynamicPlan), 604800); // Cache for 7 days
         res.json(dynamicPlan);
         return;
       } catch (geminiError) {
@@ -290,6 +309,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       user.height_cm
     );
 
+    await cache.set(CACHE_KEY, JSON.stringify(plan), 604800);
     res.json(plan);
   } catch (err) {
     console.error('Workout plan error:', err);

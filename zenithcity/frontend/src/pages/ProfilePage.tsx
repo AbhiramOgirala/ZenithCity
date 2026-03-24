@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import { User, Lock, Eye, Award, Swords, Shield, Zap, Save, Settings, Dumbbell, Calendar, Ruler, Weight, HeartPulse } from 'lucide-react';
+import { User, Lock, Eye, Award, Swords, Shield, Zap, Save, Settings, Dumbbell, Calendar, Ruler, Weight, HeartPulse, Target } from 'lucide-react';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { api } from '../services/api';
@@ -16,9 +16,14 @@ export default function ProfilePage() {
   const [fitnessGoal, setFitnessGoal] = useState(user?.fitness_goal || 'weight_loss');
   const [height, setHeight] = useState(user?.height_cm || '');
   const [weight, setWeight] = useState(user?.weight_kg || '');
-  const [age, setAge] = useState(user?.age || '');
+  const [age, setAge] = useState<string | number>(user?.age || '');
   const [gender, setGender] = useState(user?.gender || '');
   const [healthIssues, setHealthIssues] = useState(user?.health_issues || '');
+  
+  const [targetWeight, setTargetWeight] = useState<string | number>(user?.target_weight_kg || '');
+  const [timePeriod, setTimePeriod] = useState<string | number>(user?.time_period_weeks || '');
+  const [timePerDay, setTimePerDay] = useState<string | number>(user?.time_per_day_minutes || '');
+  
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { dispatch(fetchProfile()); }, [dispatch]);
@@ -33,6 +38,9 @@ export default function ProfilePage() {
       if (user.age) setAge(user.age);
       if (user.gender) setGender(user.gender);
       if (user.health_issues) setHealthIssues(user.health_issues);
+      if (user.target_weight_kg) setTargetWeight(user.target_weight_kg);
+      if (user.time_period_weeks) setTimePeriod(user.time_period_weeks);
+      if (user.time_per_day_minutes) setTimePerDay(user.time_per_day_minutes);
     }
   }, [user]);
 
@@ -43,7 +51,10 @@ export default function ProfilePage() {
         username, privacy_mode: privacyMode, battle_auto_enroll: battleAutoEnroll,
         fitness_goal: fitnessGoal, height_cm: height ? Number(height) : null,
         weight_kg: weight ? Number(weight) : null, age: age ? Number(age) : null,
-        gender: gender || null, health_issues: healthIssues || null
+        gender: gender || null, health_issues: healthIssues || null,
+        target_weight_kg: targetWeight ? Number(targetWeight) : null,
+        time_period_weeks: timePeriod ? Number(timePeriod) : null,
+        time_per_day_minutes: timePerDay ? Number(timePerDay) : null
       });
       dispatch(addToast({ type: 'success', message: 'Profile updated!' }));
       dispatch(fetchProfile());
@@ -165,6 +176,100 @@ export default function ProfilePage() {
             </button>
           </div>
         </div>
+
+          <hr className="border-space-700/50 my-6" />
+
+          {/* AI Plan Settings */}
+          <h3 className="font-display font-semibold text-sm text-neon-orange flex items-center gap-2 mb-4">
+            <Zap className="w-4 h-4" /> Customized AI Params
+          </h3>
+
+          <div className="grid sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2">Fitness Goal</label>
+              <select
+                value={fitnessGoal}
+                onChange={e => setFitnessGoal(e.target.value)}
+                className="input-field appearance-none bg-space-900 border border-space-700/50 focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan/50 text-white rounded-xl"
+              >
+                <option value="weight_loss">Weight Loss</option>
+                <option value="strength">Strength Building</option>
+                <option value="endurance">Endurance Training</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2">Gender</label>
+              <select 
+                value={gender} 
+                onChange={e => setGender(e.target.value)} 
+                className="input-field appearance-none bg-space-900 border border-space-700/50 focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan/50 text-white rounded-xl"
+              >
+                <option value="" disabled>Select Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Height (cm)</label>
+              <div className="relative">
+                <Ruler className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" />
+                <input type="number" value={height} onChange={e => setHeight(e.target.value)} className="input-field pl-8" placeholder="175" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Weight (kg)</label>
+              <div className="relative">
+                <Weight className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" />
+                <input type="number" value={weight} onChange={e => setWeight(e.target.value)} className="input-field pl-8" placeholder="70" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2">Age</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-space-500" />
+                <input type="number" value={age} onChange={e => setAge(e.target.value)} className="input-field pl-8" placeholder="25" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2 text-neon-orange font-bold flex items-center gap-1">
+                <Target className="w-2.5 h-2.5" /> Target Wt (kg)
+              </label>
+              <input type="number" value={targetWeight} onChange={e => setTargetWeight(e.target.value)} className="input-field border-neon-orange/20" placeholder="65" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2 text-neon-orange font-bold flex items-center gap-1">
+                <Calendar className="w-2.5 h-2.5" /> Timespan (Wks)
+              </label>
+              <input type="number" value={timePeriod} onChange={e => setTimePeriod(e.target.value)} className="input-field border-neon-orange/20" placeholder="10" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-mono text-space-400 uppercase tracking-widest mb-2 text-neon-orange font-bold flex items-center gap-1">
+                <Dumbbell className="w-2.5 h-2.5" /> Time/Day (Mins)
+              </label>
+              <input type="number" value={timePerDay} onChange={e => setTimePerDay(e.target.value)} className="input-field border-neon-orange/20" placeholder="45" />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-xs font-mono text-space-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+              <HeartPulse className="w-3 h-3 text-neon-pink" /> Health Issues / Injuries
+            </label>
+            <textarea
+              value={healthIssues}
+              onChange={e => setHealthIssues(e.target.value)}
+              className="input-field resize-none h-20 bg-space-900 border border-space-700/50 focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan/50 text-white rounded-xl p-3"
+              placeholder="e.g. Bad knees, asthma..."
+            />
+          </div>
+
+          <hr className="border-space-700/50 my-6" />
 
         <button
           onClick={handleSave}

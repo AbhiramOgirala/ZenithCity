@@ -264,7 +264,7 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
 // POST /api/auth/onboarding — Save onboarding data
 router.post('/onboarding', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { fitness_goal, height_cm, weight_kg, age, gender, health_issues } = req.body;
+    const { fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes } = req.body;
 
     // Validate fitness goal
     const validGoals = ['weight_loss', 'strength', 'endurance'];
@@ -296,11 +296,14 @@ router.post('/onboarding', authMiddleware, async (req: AuthRequest, res: Respons
         age: age || null,
         gender: gender || null,
         health_issues: health_issues || null,
+        target_weight_kg: target_weight_kg || null,
+        time_period_weeks: time_period_weeks || null,
+        time_per_day_minutes: time_per_day_minutes || null,
         onboarding_completed: true,
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.user!.id)
-      .select('id, email, username, fitness_goal, height_cm, weight_kg, age, gender, health_issues, onboarding_completed, points_balance')
+      .select('id, email, username, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes, onboarding_completed, points_balance')
       .single();
 
     if (error) throw error;

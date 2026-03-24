@@ -15,6 +15,9 @@ interface User {
   age?: number;
   gender?: string;
   health_issues?: string;
+  target_weight_kg?: number;
+  time_period_weeks?: number;
+  time_per_day_minutes?: number;
   onboarding_completed?: boolean;
   current_streak?: number;
   best_streak?: number;

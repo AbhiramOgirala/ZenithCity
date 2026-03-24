@@ -86,18 +86,22 @@ export default function WorkoutPage() {
         const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long' });
         const todayDay = data.plan?.find((d: any) => d.day === todayStr);
         if (todayDay && todayDay.exercises?.length > 0) {
-          // Map Gemini's exercises to our UI types
+          // Map Gemini's exercises to our UI types without losing custom sets/reps
           const matchedExercises = todayDay.exercises
-            .map((ex: any) => EXERCISE_TYPES.find(t => t.id === ex.type))
+            .map((ex: any) => {
+              const baseType = EXERCISE_TYPES.find(t => t.id === ex.type);
+              if (!baseType) return null;
+              return { ...baseType, ...ex }; // Inherit specific Gemini AI sets, reps, notes, duration
+            })
             .filter(Boolean);
             
-          // Remove strict duplicates
-          const uniqueExercises = Array.from(new Set(matchedExercises.map((e: any) => e.id)))
-            .map(id => matchedExercises.find((e: any) => e.id === id));
+          // Remove strict duplicates while preserving custom Gemini params
+          const uniqueExercises = Array.from(new Set(matchedExercises.map((e: any) => e.type)))
+            .map(type => matchedExercises.find((e: any) => e.type === type));
             
           if (uniqueExercises.length > 0) {
             setTodayExercises(uniqueExercises);
-            setSelectedExercise(uniqueExercises[0].id);
+            setSelectedExercise(uniqueExercises[0].id || uniqueExercises[0].type);
             return;
           }
         }
@@ -140,7 +144,7 @@ export default function WorkoutPage() {
     };
   }, [sessionId]); // ← only fires when session id changes, never on re-render
 
-  const exerciseMeta = EXERCISE_TYPES.find(e => e.id === selectedExercise)!;
+  const exerciseMeta = todayExercises.find(e => e.type === selectedExercise || e.id === selectedExercise) || EXERCISE_TYPES.find(e => e.id === selectedExercise)!;
   const isStrength   = exerciseMeta?.type === 'strength';
   const isGPS        = exerciseMeta?.type === 'gps';
   const gpsDistance  = calcGPSDistance(gpsCoords);
@@ -317,17 +321,23 @@ export default function WorkoutPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {(todayExercises.length > 0 ? todayExercises : EXERCISE_TYPES).map(ex => (
                     <button
-                      key={ex.id}
-                      onClick={() => setSelectedExercise(ex.id)}
+                      key={ex.id || ex.type}
+                      onClick={() => setSelectedExercise(ex.id || ex.type)}
                       className={`p-3 rounded-xl border text-center transition-all duration-200 ${
-                        selectedExercise === ex.id
+                        selectedExercise === (ex.id || ex.type)
                           ? `border-space-400/60 bg-space-700/60 text-white ring-1 ring-neon-cyan/30`
                           : 'border-space-700/40 text-space-400 hover:border-space-500 hover:text-white'
                       }`}
                     >
                       <div className="text-xl mb-1">{ex.emoji}</div>
-                      <p className="text-xs font-semibold leading-tight">{ex.label}</p>
-                      <p className="text-xs text-space-500 mt-0.5 font-mono leading-tight">{ex.desc}</p>
+                      <p className="text-xs font-semibold leading-tight">{ex.name || ex.label}</p>
+                      {ex.sets ? (
+                        <p className="text-xs text-neon-yellow mt-0.5 font-mono leading-tight">{ex.sets} sets × {ex.reps} reps</p>
+                      ) : ex.duration_seconds ? (
+                        <p className="text-xs text-neon-yellow mt-0.5 font-mono leading-tight">{Math.floor(ex.duration_seconds / 60)} min target</p>
+                      ) : (
+                        <p className="text-xs text-space-500 mt-0.5 font-mono leading-tight">{ex.desc}</p>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -365,6 +375,22 @@ export default function WorkoutPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* AI Target Box */}
+                  {(exerciseMeta.sets || exerciseMeta.duration_seconds) && (
+                    <div className="bg-space-800/40 p-4 rounded-xl border border-neon-yellow/10">
+                      <p className="text-neon-yellow text-xs font-mono font-bold tracking-widest uppercase mb-1">AI Coach Target</p>
+                      {exerciseMeta.sets && (
+                        <p className="text-white text-sm">Aim for <span className="font-bold text-neon-cyan">{exerciseMeta.sets} sets</span> of <span className="font-bold text-neon-cyan">{exerciseMeta.reps} reps</span>.</p>
+                      )}
+                      {exerciseMeta.duration_seconds && (
+                        <p className="text-white text-sm">Target duration: <span className="font-bold text-neon-cyan">{formatTime(exerciseMeta.duration_seconds)}</span>.</p>
+                      )}
+                      {exerciseMeta.notes && (
+                        <p className="text-space-400 text-xs mt-1 italic opacity-80">"{exerciseMeta.notes}"</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Big timer */}
                   <div className="text-center">

@@ -9,6 +9,7 @@ import LeaderboardPage from './pages/LeaderboardPage';
 import BattlesPage from './pages/BattlesPage';
 import ProfilePage from './pages/ProfilePage';
 import WorkoutPlanPage from './pages/WorkoutPlanPage';
+import NutritionPage from './pages/NutritionPage';
 import Layout from './components/Layout';
 import ToastContainer from './components/ui/ToastContainer';
 import { useSocket } from './hooks/useSocket';
@@ -42,6 +43,7 @@ function AppContent() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/workout" element={<WorkoutPage />} />
               <Route path="/workout-plan" element={<WorkoutPlanPage />} />
+              <Route path="/nutrition" element={<NutritionPage />} />
               <Route path="/city" element={<CityPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/battles" element={<BattlesPage />} />
