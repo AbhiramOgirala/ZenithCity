@@ -23,7 +23,7 @@ interface BuildingData {
 }
 
 // ─── Window texture generator (canvas-based, PBR-quality) ────────────────────
-function makeWindowTexture(cols: number, rows: number, litColor: string, frameColor: string) {
+function makeWindowTexture(cols: number, rows: number, litColor: string, frameColor: string, timeOfDay: number = 12) {
   const W = 256, H = 512;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
@@ -35,10 +35,28 @@ function makeWindowTexture(cols: number, rows: number, litColor: string, frameCo
 
   const cw = W / cols, rh = H / rows;
   const pad = 4;
+  
+  // Calculate lighting probability based on time of day
+  const hour = timeOfDay % 24;
+  let lightProbability = 0.25; // Default
+  
+  if (hour >= 6 && hour < 9) {
+    // Morning - some lights on
+    lightProbability = 0.4;
+  } else if (hour >= 9 && hour < 17) {
+    // Day - fewer lights (office hours)
+    lightProbability = 0.6;
+  } else if (hour >= 17 && hour < 22) {
+    // Evening - most lights on
+    lightProbability = 0.8;
+  } else if (hour >= 22 || hour < 6) {
+    // Night - some lights on
+    lightProbability = 0.3;
+  }
 
   for (let c = 0; c < cols; c++) {
     for (let r = 0; r < rows; r++) {
-      const lit = Math.random() > 0.25;
+      const lit = Math.random() < lightProbability;
       // Window pane
       ctx.fillStyle = lit ? litColor : '#0a0e1a';
       ctx.fillRect(c * cw + pad, r * rh + pad, cw - pad * 2, rh - pad * 2);
@@ -57,13 +75,15 @@ function makeWindowTexture(cols: number, rows: number, litColor: string, frameCo
 
 // ─── Shared textures (created once) ──────────────────────────────────────────
 let _texCache: Record<string, THREE.CanvasTexture> = {};
-function getWindowTex(key: string, cols: number, rows: number, lit: string, frame: string) {
-  if (!_texCache[key]) _texCache[key] = makeWindowTexture(cols, rows, lit, frame);
-  return _texCache[key];
+function getWindowTex(key: string, cols: number, rows: number, lit: string, frame: string, timeOfDay: number = 12) {
+  // Include timeOfDay in cache key to regenerate textures when time changes significantly
+  const timeKey = `${key}_${Math.floor(timeOfDay / 3)}`; // Update every 3 hours
+  if (!_texCache[timeKey]) _texCache[timeKey] = makeWindowTexture(cols, rows, lit, frame, timeOfDay);
+  return _texCache[timeKey];
 }
 
 // ─── HOUSE ───────────────────────────────────────────────────────────────────
-function House({ level, damaged }: { level: number; damaged: boolean }) {
+function House({ level, damaged, timeOfDay = 12 }: { level: number; damaged: boolean; timeOfDay?: number }) {
   const s = 0.85 + level * 0.18;
   const w = 2.2 * s, d = 2.2 * s, wallH = 2.0 * s, roofH = 1.2 * s;
 
@@ -86,7 +106,7 @@ function House({ level, damaged }: { level: number; damaged: boolean }) {
     return t;
   }, []);
 
-  const winTex = getWindowTex('house', 2, 1, '#FFE08060', '#A07050');
+  const winTex = getWindowTex('house', 2, 1, '#FFE08060', '#A07050', timeOfDay);
 
   return (
     <group>
@@ -152,18 +172,18 @@ function House({ level, damaged }: { level: number; damaged: boolean }) {
         <meshStandardMaterial color="#8B4513" roughness={0.7} />
       </mesh>
 
-      {!damaged && <pointLight position={[0, wallH * 0.6, 0]} color="#FFD08080" intensity={0.4} distance={5} />}
+      {!damaged && <pointLight position={[0, wallH * 0.6, 0]} color="#FFD080" intensity={0.4} distance={5} />}
     </group>
   );
 }
 
 // ─── APARTMENT ───────────────────────────────────────────────────────────────
-function Apartment({ level, damaged }: { level: number; damaged: boolean }) {
+function Apartment({ level, damaged, timeOfDay = 12 }: { level: number; damaged: boolean; timeOfDay?: number }) {
   const floors = 5 + level * 3;
   const fH = 0.5, totalH = floors * fH;
   const w = 2.3, d = 2.1;
 
-  const winTex = getWindowTex('apt', 4, floors, '#90D8FF80', '#4A6080');
+  const winTex = getWindowTex('apt', 4, floors, '#90D8FF80', '#4A6080', timeOfDay);
 
   return (
     <group>
@@ -218,19 +238,19 @@ function Apartment({ level, damaged }: { level: number; damaged: boolean }) {
         <meshStandardMaterial color="#37474F" metalness={0.5} roughness={0.5} />
       </mesh>
 
-      {!damaged && <pointLight position={[0, totalH * 0.5, 0]} color="#90D8FF40" intensity={0.6} distance={10} />}
+      {!damaged && <pointLight position={[0, totalH * 0.5, 0]} color="#90D8FF" intensity={0.6} distance={10} />}
     </group>
   );
 }
 
 // ─── OFFICE ──────────────────────────────────────────────────────────────────
-function Office({ level, damaged }: { level: number; damaged: boolean }) {
+function Office({ level, damaged, timeOfDay = 12 }: { level: number; damaged: boolean; timeOfDay?: number }) {
   const floors = 10 + level * 5;
   const fH = 0.42, totalH = floors * fH;
   const w = 2.5, d = 2.0;
 
-  const winTex = getWindowTex('office', 5, floors, '#C0E8FF70', '#2A3A4A');
-  const winTexB = getWindowTex('office_b', 5, floors, '#FFE09050', '#2A3A4A');
+  const winTex = getWindowTex('office', 5, floors, '#C0E8FF70', '#2A3A4A', timeOfDay);
+  const winTexB = getWindowTex('office_b', 5, floors, '#FFE09050', '#2A3A4A', timeOfDay);
 
   return (
     <group>
@@ -297,7 +317,7 @@ function Office({ level, damaged }: { level: number; damaged: boolean }) {
 }
 
 // ─── PARK ────────────────────────────────────────────────────────────────────
-function Park({ level, damaged }: { level: number; damaged: boolean }) {
+function Park({ level, damaged, timeOfDay = 12 }: { level: number; damaged: boolean; timeOfDay?: number }) {
   const radius = 2.8 + level * 0.5;
   const treeCount = 7 + level * 3;
   const treePos = useMemo(() =>
@@ -372,18 +392,18 @@ function Park({ level, damaged }: { level: number; damaged: boolean }) {
             <meshStandardMaterial color="#6D4C41" roughness={0.95} />
           </mesh>
           <mesh position={[0, t.h + t.s * 0.45, 0]} castShadow>
-            <coneGeometry args={[t.s * 0.55, t.s * 1.1, 7]} />
+            <coneGeometry args={[t.s * 0.55, t.s * 1.1, 6]} />
             <meshStandardMaterial color={treeColor} roughness={0.9} />
           </mesh>
           {level >= 2 && (
             <mesh position={[0, t.h + t.s * 0.9, 0]} castShadow>
-              <coneGeometry args={[t.s * 0.38, t.s * 0.85, 6]} />
+              <coneGeometry args={[t.s * 0.38, t.s * 0.85, 5]} />
               <meshStandardMaterial color={treeColor} roughness={0.9} />
             </mesh>
           )}
           {level >= 3 && (
             <mesh position={[0, t.h + t.s * 1.35, 0]} castShadow>
-              <coneGeometry args={[t.s * 0.22, t.s * 0.6, 6]} />
+              <coneGeometry args={[t.s * 0.22, t.s * 0.6, 5]} />
               <meshStandardMaterial color={treeColor} roughness={0.9} />
             </mesh>
           )}
@@ -396,7 +416,7 @@ function Park({ level, damaged }: { level: number; damaged: boolean }) {
 }
 
 // ─── STADIUM ─────────────────────────────────────────────────────────────────
-function Stadium({ level, damaged }: { level: number; damaged: boolean }) {
+function Stadium({ level, damaged, timeOfDay = 12 }: { level: number; damaged: boolean; timeOfDay?: number }) {
   const s = 0.9 + level * 0.22;
   const outerR = 4.5 * s, innerR = 3.0 * s, ringH = 2.2 * s;
   const lightCount = 8 + level * 2;
@@ -537,22 +557,14 @@ class GLBErrorBoundary extends React.Component<
   render() { return this.state.error ? this.props.fallback : this.props.children; }
 }
 
-function BuildingContent({ type, level, damaged }: { type: string; level: number; damaged: boolean }) {
-  const ProceduralMap: Record<string, React.ComponentType<{ level: number; damaged: boolean }>> = {
+function BuildingContent({ type, level, damaged, timeOfDay = 12 }: { type: string; level: number; damaged: boolean; timeOfDay?: number }) {
+  const ProceduralMap: Record<string, React.ComponentType<{ level: number; damaged: boolean; timeOfDay?: number }>> = {
     house: House, apartment: Apartment, office: Office, park: Park, stadium: Stadium,
   };
   const Procedural = ProceduralMap[type] || House;
-  const fallback = <Procedural level={level} damaged={damaged} />;
-
-  if (!MODEL_PATHS[type]) return fallback;
-
-  return (
-    <GLBErrorBoundary fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <GLBBuilding type={type} level={level} damaged={damaged} />
-      </Suspense>
-    </GLBErrorBoundary>
-  );
+  
+  // Always use procedural buildings since GLB models don't exist
+  return <Procedural level={level} damaged={damaged} timeOfDay={timeOfDay} />;
 }
 
 // ─── Under-construction ───────────────────────────────────────────────────────
@@ -595,25 +607,175 @@ function UnderConstruction({ type }: { type: string }) {
 }
 
 // ─── Ground + City Infrastructure ─────────────────────────────────────────────
-function CityGround() {
+function CityGround({ timeOfDay = 12 }: { timeOfDay?: number }) {
+  // Create grass texture
+  const grassTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+    
+    // Base grass color that changes with time of day
+    const hour = timeOfDay % 24;
+    let baseGreen = '#2d5016';
+    let accentGreen = '#4a7c23';
+    
+    if (hour >= 6 && hour < 18) {
+      // Daytime - brighter greens
+      baseGreen = '#4a7c23';
+      accentGreen = '#6ba832';
+    } else if (hour >= 18 && hour < 20) {
+      // Evening - warmer greens
+      baseGreen = '#3d6018';
+      accentGreen = '#5a8c25';
+    } else {
+      // Night - darker greens
+      baseGreen = '#1a3008';
+      accentGreen = '#2d5016';
+    }
+    
+    // Fill base color
+    ctx.fillStyle = baseGreen;
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Add grass texture with random patches
+    for (let i = 0; i < 2000; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const size = Math.random() * 3 + 1;
+      
+      ctx.fillStyle = Math.random() > 0.5 ? accentGreen : baseGreen;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Add some dirt patches
+    ctx.fillStyle = '#8B4513';
+    for (let i = 0; i < 50; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const size = Math.random() * 8 + 3;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(8, 8);
+    return texture;
+  }, [Math.floor(timeOfDay / 3)]); // Update every 3 hours
+  
+  // Create road texture
+  const roadTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+    
+    // Dark asphalt base
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // Add some texture variation
+    for (let i = 0; i < 500; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const size = Math.random() * 2;
+      
+      ctx.fillStyle = `rgba(${40 + Math.random() * 20}, ${40 + Math.random() * 20}, ${40 + Math.random() * 20}, 0.3)`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 4);
+    return texture;
+  }, []);
+
   return (
     <>
-      {/* Ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[160, 160]} />
-        <meshStandardMaterial color="#0D1117" roughness={1} />
+      {/* Large grass ground plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial 
+          map={grassTexture}
+          roughness={0.9}
+          metalness={0.0}
+        />
       </mesh>
 
-      {/* Sidewalk network */}
+      {/* Elevated grass areas around the city */}
+      {Array.from({ length: 4 }, (_, i) => { // Reduced from 8 to 4
+        const angle = (i / 4) * Math.PI * 2;
+        const radius = 60 + Math.random() * 20;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const size = 15 + Math.random() * 10;
+        
+        return (
+          <mesh 
+            key={`grass-${i}`}
+            rotation={[-Math.PI / 2, 0, Math.random() * Math.PI]} 
+            position={[x, 0.1, z]} 
+            receiveShadow
+          >
+            <planeGeometry args={[size, size]} />
+            <meshStandardMaterial 
+              map={grassTexture}
+              roughness={0.8}
+              metalness={0.0}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* Road network with better texture */}
       {[-3, -1, 1, 3].flatMap(i =>
         [false, true].map((vert, j) => (
-          <mesh key={`sw${i}${j}`}
+          <mesh key={`road${i}${j}`}
             rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
-            position={[vert ? i * 10 : 0, 0.002, vert ? 0 : i * 10]}>
-            <planeGeometry args={[100, 1.4]} />
-            <meshStandardMaterial color="#1C2025" roughness={0.95} />
+            position={[vert ? i * 10 : 0, 0.001, vert ? 0 : i * 10]}>
+            <planeGeometry args={[100, 2.5]} />
+            <meshStandardMaterial 
+              map={roadTexture}
+              roughness={0.8}
+              metalness={0.1}
+            />
           </mesh>
         ))
+      )}
+
+      {/* Sidewalks */}
+      {[-3, -1, 1, 3].flatMap(i =>
+        [false, true].flatMap((vert) => [
+          // Left sidewalk
+          <mesh key={`sw-l${i}${vert}`}
+            rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
+            position={[
+              vert ? i * 10 : -1.8, 
+              0.002, 
+              vert ? -1.8 : i * 10
+            ]}>
+            <planeGeometry args={[100, 0.8]} />
+            <meshStandardMaterial color="#d3d3d3" roughness={0.7} />
+          </mesh>,
+          // Right sidewalk
+          <mesh key={`sw-r${i}${vert}`}
+            rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
+            position={[
+              vert ? i * 10 : 1.8, 
+              0.002, 
+              vert ? 1.8 : i * 10
+            ]}>
+            <planeGeometry args={[100, 0.8]} />
+            <meshStandardMaterial color="#d3d3d3" roughness={0.7} />
+          </mesh>
+        ])
       )}
 
       {/* Road center lines */}
@@ -622,11 +784,130 @@ function CityGround() {
           <mesh key={`cl${i}${j}`}
             rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
             position={[vert ? i * 10 : 0, 0.003, vert ? 0 : i * 10]}>
-            <planeGeometry args={[100, 0.06]} />
-            <meshStandardMaterial color="#FFFF00" emissive="#FFFF00" emissiveIntensity={0.05} transparent opacity={0.4} />
+            <planeGeometry args={[100, 0.08]} />
+            <meshStandardMaterial 
+              color="#FFFF00" 
+              emissive="#FFFF00" 
+              emissiveIntensity={0.1} 
+              transparent 
+              opacity={0.8} 
+            />
           </mesh>
         ))
       )}
+
+      {/* Add some decorative elements */}
+      {/* Trees around the city */}
+      {Array.from({ length: 8 }, (_, i) => { // Reduced from 15 to 8
+        const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
+        const radius = 35 + Math.random() * 15;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const height = 3 + Math.random() * 4;
+        
+        return (
+          <group key={`tree-${i}`} position={[x, 0, z]}>
+            {/* Tree trunk */}
+            <mesh position={[0, height * 0.3, 0]}>
+              <cylinderGeometry args={[0.2, 0.3, height * 0.6, 8]} />
+              <meshStandardMaterial color="#8B4513" roughness={0.9} />
+            </mesh>
+            {/* Tree foliage */}
+            <mesh position={[0, height * 0.8, 0]}>
+              <sphereGeometry args={[height * 0.4, 8, 6]} />
+              <meshStandardMaterial 
+                color={timeOfDay >= 6 && timeOfDay < 18 ? "#228B22" : "#1a5a1a"} 
+                roughness={0.8} 
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* Small flower patches */}
+      {Array.from({ length: 10 }, (_, i) => { // Reduced from 20 to 10
+        const x = (Math.random() - 0.5) * 80;
+        const z = (Math.random() - 0.5) * 80;
+        // Avoid roads
+        if (Math.abs(x % 10) < 2 || Math.abs(z % 10) < 2) return null;
+        
+        return (
+          <group key={`flowers-${i}`} position={[x, 0.05, z]}>
+            {Array.from({ length: 2 + Math.random() * 3 }, (_, j) => ( // Reduced flowers per patch
+              <mesh 
+                key={j}
+                position={[
+                  (Math.random() - 0.5) * 2,
+                  0,
+                  (Math.random() - 0.5) * 2
+                ]}
+              >
+                <sphereGeometry args={[0.05, 6, 6]} />
+                <meshStandardMaterial 
+                  color={['#ff69b4', '#ffb6c1', '#ffd700', '#ff6347'][Math.floor(Math.random() * 4)]}
+                  emissive={['#ff69b4', '#ffb6c1', '#ffd700', '#ff6347'][Math.floor(Math.random() * 4)]}
+                  emissiveIntensity={0.2}
+                />
+              </mesh>
+            ))}
+          </group>
+        );
+      })}
+
+      {/* Distant hills/terrain */}
+      {Array.from({ length: 8 }, (_, i) => { // Reduced from 12 to 8
+        const angle = (i / 8) * Math.PI * 2;
+        const radius = 120 + Math.random() * 30;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const height = 5 + Math.random() * 10;
+        const width = 20 + Math.random() * 15;
+        
+        return (
+          <mesh 
+            key={`hill-${i}`}
+            position={[x, height / 2, z]}
+            rotation={[0, Math.random() * Math.PI, 0]}
+          >
+            <boxGeometry args={[width, height, width * 0.8]} />
+            <meshStandardMaterial 
+              color="#3d6018"
+              roughness={0.9}
+              metalness={0.0}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* Scattered rocks */}
+      {Array.from({ length: 15 }, (_, i) => { // Reduced from 25 to 15
+        const x = (Math.random() - 0.5) * 100;
+        const z = (Math.random() - 0.5) * 100;
+        // Avoid roads and building areas
+        if (Math.abs(x % 10) < 3 || Math.abs(z % 10) < 3) return null;
+        if (Math.abs(x) < 15 && Math.abs(z) < 15) return null; // Avoid city center
+        
+        const size = 0.3 + Math.random() * 0.8;
+        
+        return (
+          <mesh 
+            key={`rock-${i}`}
+            position={[x, size * 0.3, z]}
+            rotation={[
+              Math.random() * 0.3,
+              Math.random() * Math.PI * 2,
+              Math.random() * 0.3
+            ]}
+          >
+            <boxGeometry args={[size, size * 0.6, size * 0.8]} />
+            <meshStandardMaterial 
+              color="#696969"
+              roughness={0.95}
+              metalness={0.0}
+            />
+          </mesh>
+        );
+      })}
     </>
   );
 }
@@ -653,12 +934,14 @@ function StreetLamp({ x, z }: { x: number; z: number }) {
 
 function TerritoryBoundary({ size }: { size: number }) {
   const ref = useRef<THREE.LineLoop>(null);
+  const materialRef = useRef<THREE.LineBasicMaterial>(null);
   const half = Math.min(Math.sqrt(size) * 0.82, 38);
 
-  useFrame(({ clock }) => {
-    if (ref.current) {
-      (ref.current.material as THREE.LineBasicMaterial).opacity =
-        0.4 + Math.sin(clock.elapsedTime * 1.1) * 0.25;
+  useFrame(({ clock }, delta) => {
+    if (materialRef.current) {
+      // Use delta time for smoother animation and reduce frequency
+      const time = clock.elapsedTime * 0.8; // Slower animation
+      materialRef.current.opacity = 0.4 + Math.sin(time) * 0.15; // Reduced amplitude
     }
   });
 
@@ -678,7 +961,7 @@ function TerritoryBoundary({ size }: { size: number }) {
   return (
     <>
       <lineLoop ref={ref} geometry={geo}>
-        <lineBasicMaterial color="#00F5FF" transparent opacity={0.55} />
+        <lineBasicMaterial ref={materialRef} color="#00F5FF" transparent opacity={0.55} />
       </lineLoop>
       {/* Inner glow plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
@@ -693,13 +976,17 @@ function TerritoryBoundary({ size }: { size: number }) {
 export default function City3D({
   buildings,
   territorySize = 100,
+  timeOfDay = 12,
+  sunIntensity = 1,
 }: {
   buildings: BuildingData[];
   territorySize?: number;
+  timeOfDay?: number;
+  sunIntensity?: number;
 }) {
   return (
     <group>
-      <CityGround />
+      <CityGround timeOfDay={timeOfDay} />
       <TerritoryBoundary size={territorySize} />
 
       {/* Street lamps at intersections */}
@@ -712,7 +999,7 @@ export default function City3D({
         <group key={b.id} position={[b.position_x, b.position_y, b.position_z]}>
           {b.status === 'under_construction'
             ? <UnderConstruction type={b.type} />
-            : <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} />
+            : <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} timeOfDay={timeOfDay} />
           }
           {/* Damage pulse ring on ground */}
           {b.status === 'damaged' && (
@@ -728,5 +1015,4 @@ export default function City3D({
   );
 }
 
-// Preload GLB models silently (ignored if files don't exist)
-Object.values(MODEL_PATHS).forEach(p => { try { useGLTF.preload(p); } catch {} });
+// GLB models are disabled - using procedural buildings only

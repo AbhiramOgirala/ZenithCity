@@ -26,18 +26,18 @@ router.get('/:type', authMiddleware, async (req: AuthRequest, res: Response): Pr
       .limit(100);
 
     if (type === 'weekly') {
-      // Sum points from last 7 days via transactions
+      // Sum NET points from last 7 days via transactions (awards - deductions)
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: weeklyPoints } = await supabase
+      const { data: weeklyTransactions } = await supabase
         .from('points_transactions')
-        .select('user_id, amount')
-        .eq('type', 'award')
+        .select('user_id, amount, type')
         .gte('created_at', weekAgo);
 
-      // Aggregate by user
+      // Aggregate by user (awards are positive, deductions are negative)
       const totals: Record<string, number> = {};
-      weeklyPoints?.forEach(t => {
-        totals[t.user_id] = (totals[t.user_id] || 0) + t.amount;
+      weeklyTransactions?.forEach(t => {
+        const points = t.type === 'award' ? t.amount : -t.amount;
+        totals[t.user_id] = (totals[t.user_id] || 0) + points;
       });
 
       const sorted = Object.entries(totals)
@@ -65,6 +65,54 @@ router.get('/:type', authMiddleware, async (req: AuthRequest, res: Response): Pr
         .select('points_balance')
         .eq('id', req.user!.id)
         .single();
+
+      const viewerRankIdx = entries.findIndex(e => e.user_id === req.user!.id);
+
+      const result = {
+        entries,
+        viewer_rank: viewerRankIdx >= 0 ? viewerRankIdx + 1 : entries.length + 1,
+        viewer_points: totals[req.user!.id] || 0,
+      };
+
+      await cache.set(cacheKey, JSON.stringify(result), CACHE_TTL);
+      res.json(result);
+      return;
+    }
+
+    if (type === 'monthly') {
+      // Sum NET points from last 30 days via transactions
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: monthlyTransactions } = await supabase
+        .from('points_transactions')
+        .select('user_id, amount, type')
+        .gte('created_at', monthAgo);
+
+      // Aggregate by user (awards are positive, deductions are negative)
+      const totals: Record<string, number> = {};
+      monthlyTransactions?.forEach(t => {
+        const points = t.type === 'award' ? t.amount : -t.amount;
+        totals[t.user_id] = (totals[t.user_id] || 0) + points;
+      });
+
+      const sorted = Object.entries(totals)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 100);
+
+      const userIds = sorted.map(([id]) => id);
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, username, privacy_mode')
+        .in('id', userIds);
+
+      const entries = sorted.map(([userId, points], idx) => {
+        const user = users?.find(u => u.id === userId);
+        return {
+          rank: idx + 1,
+          user_id: userId,
+          username: user?.privacy_mode ? `Player_${userId.slice(0, 6)}` : user?.username || 'Unknown',
+          total_points: points,
+        };
+      });
 
       const viewerRankIdx = entries.findIndex(e => e.user_id === req.user!.id);
 

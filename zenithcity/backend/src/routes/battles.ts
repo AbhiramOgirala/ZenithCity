@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { emitToUser } from '../utils/socket';
 
 const router = Router();
 
@@ -155,6 +156,84 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response): Promis
     res.status(201).json(battle);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create battle' });
+  }
+});
+
+// POST /api/battles/:id/complete (admin/system endpoint to complete battles)
+router.post('/:id/complete', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { data: battle } = await supabase
+      .from('territory_battles')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!battle) {
+      res.status(404).json({ error: 'Battle not found' });
+      return;
+    }
+
+    if (battle.status === 'completed') {
+      res.status(400).json({ error: 'Battle already completed' });
+      return;
+    }
+
+    // Get all participants with their battle points
+    const { data: participants } = await supabase
+      .from('battle_participants')
+      .select('user_id, battle_points')
+      .eq('battle_id', battle.id)
+      .gt('battle_points', 0); // Only participants with points
+
+    if (participants && participants.length > 0) {
+      // Transfer battle points to user balances
+      for (const participant of participants) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('points_balance')
+          .eq('id', participant.user_id)
+          .single();
+
+        const currentBalance = user?.points_balance || 0;
+        const newBalance = currentBalance + participant.battle_points;
+
+        await supabase
+          .from('users')
+          .update({ points_balance: newBalance })
+          .eq('id', participant.user_id);
+
+        // Log transaction
+        await supabase.from('points_transactions').insert({
+          id: uuidv4(),
+          user_id: participant.user_id,
+          amount: participant.battle_points,
+          type: 'award',
+          reference_type: 'battle_completion',
+          reference_id: battle.id,
+          balance_after: newBalance,
+        });
+
+        // Emit socket event for battle completion reward
+        emitToUser(participant.user_id, 'points:balance_update', {
+          new_balance: newBalance,
+          points_earned: participant.battle_points,
+          reason: 'battle_completion'
+        });
+      }
+    }
+
+    // Mark battle as completed
+    const { data: completedBattle } = await supabase
+      .from('territory_battles')
+      .update({ status: 'completed' })
+      .eq('id', battle.id)
+      .select()
+      .single();
+
+    res.json({ battle: completedBattle, participants_rewarded: participants?.length || 0 });
+  } catch (err) {
+    console.error('Complete battle error:', err);
+    res.status(500).json({ error: 'Failed to complete battle' });
   }
 });
 

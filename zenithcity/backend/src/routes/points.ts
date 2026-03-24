@@ -50,4 +50,29 @@ router.get('/transactions', authMiddleware, async (req: AuthRequest, res: Respon
   }
 });
 
+// POST /api/points/refresh - Force refresh balance from database
+router.post('/refresh', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // Clear cache
+    const cacheKey = `user:${req.user!.id}:balance`;
+    await cache.del(cacheKey);
+
+    // Fetch fresh balance from database
+    const { data: user } = await supabase
+      .from('users')
+      .select('points_balance')
+      .eq('id', req.user!.id)
+      .single();
+
+    const balance = user?.points_balance || 0;
+    
+    // Update cache with fresh value
+    await cache.set(cacheKey, String(balance), 3600);
+
+    res.json({ balance, refreshed: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to refresh balance' });
+  }
+});
+
 export default router;

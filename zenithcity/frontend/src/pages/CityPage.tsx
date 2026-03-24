@@ -15,7 +15,10 @@ import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { RootState, AppDispatch } from '../store';
 import City3D from '../components/City3D';
+import SkySystem from '../components/SkySystem';
+import DynamicLighting from '../components/DynamicLighting';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import * as THREE from 'three';
 
 const BUILDING_TYPES = [
   { id: 'house',     label: 'House',     cost: 100,  emoji: '🏠', desc: 'Starter dwelling' },
@@ -81,6 +84,53 @@ export default function CityPage() {
   const [selectedType, setSelectedType] = useState('house');
   const [activeTab, setActiveTab] = useState<'build' | 'buildings'>('build');
   const [constructing, setConstructing] = useState(false);
+  
+  // Sky system state
+  const [lightingData, setLightingData] = useState({
+    timeOfDay: new Date().getHours() + new Date().getMinutes() / 60,
+    sunIntensity: 1,
+    moonIntensity: 0,
+    sunPosition: new THREE.Vector3(15, 30, 15),
+    moonPosition: new THREE.Vector3(-15, -10, -15)
+  });
+
+  const handleLightingChange = (timeOfDay: number, sunIntensity: number, moonIntensity: number) => {
+    // Throttle updates to reduce jittering - only update if values changed significantly
+    const timeDiff = Math.abs(timeOfDay - lightingData.timeOfDay);
+    const sunDiff = Math.abs(sunIntensity - lightingData.sunIntensity);
+    const moonDiff = Math.abs(moonIntensity - lightingData.moonIntensity);
+    
+    // Only update if there's a significant change (reduces unnecessary re-renders)
+    if (timeDiff < 0.01 && sunDiff < 0.01 && moonDiff < 0.01) {
+      return;
+    }
+    
+    // Calculate sun position based on time
+    const sunAngle = ((timeOfDay - 6) / 12) * Math.PI;
+    const sunElevation = Math.sin(sunAngle) * 0.8;
+    const sunAzimuth = sunAngle - Math.PI / 2;
+    
+    const sunX = Math.cos(sunAzimuth) * Math.cos(sunElevation) * 50;
+    const sunY = Math.sin(sunElevation) * 50;
+    const sunZ = Math.sin(sunAzimuth) * Math.cos(sunElevation) * 50;
+    
+    // Calculate moon position (opposite to sun)
+    const moonAngle = ((timeOfDay - 18) / 12) * Math.PI;
+    const moonElevation = Math.sin(moonAngle) * 0.6;
+    const moonAzimuth = moonAngle - Math.PI / 2;
+    
+    const moonX = Math.cos(moonAzimuth) * Math.cos(moonElevation) * 45;
+    const moonY = Math.sin(moonElevation) * 45;
+    const moonZ = Math.sin(moonAzimuth) * Math.cos(moonElevation) * 45;
+    
+    setLightingData({
+      timeOfDay,
+      sunIntensity,
+      moonIntensity,
+      sunPosition: new THREE.Vector3(sunX, Math.max(sunY, -10), sunZ),
+      moonPosition: new THREE.Vector3(moonX, Math.max(moonY, -8), moonZ)
+    });
+  };
 
   useAutoCompleteBuildings();
 
@@ -163,22 +213,32 @@ export default function CityPage() {
           camera={{ position: [22, 18, 22], fov: 48 }}
           style={{ background: 'transparent' }}
           shadows
+          dpr={[1, 2]} // Limit device pixel ratio for performance
+          performance={{ min: 0.5 }} // Allow frame rate to drop to maintain performance
         >
           <Suspense fallback={null}>
-            <ambientLight intensity={0.25} />
-            <hemisphereLight args={['#0a1628', '#1a2a4a', 0.6]} />
-            <directionalLight
-              position={[15, 30, 15]} intensity={1.4} castShadow
-              shadow-mapSize={[2048, 2048]}
-              shadow-camera-far={80}
-              shadow-camera-left={-30} shadow-camera-right={30}
-              shadow-camera-top={30}  shadow-camera-bottom={-30}
+            {/* Sky system with sun, moon, and dynamic colors */}
+            <SkySystem onLightingChange={handleLightingChange} />
+            
+            {/* Dynamic lighting that responds to time of day */}
+            <DynamicLighting 
+              timeOfDay={lightingData.timeOfDay}
+              sunIntensity={lightingData.sunIntensity}
+              moonIntensity={lightingData.moonIntensity}
+              sunPosition={lightingData.sunPosition}
+              moonPosition={lightingData.moonPosition}
             />
-            <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={1.2} distance={45} />
-            <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={0.8} distance={40} />
-            <City3D buildings={city?.buildings || []} territorySize={city?.territory_size || 100} />
+            
+            {/* City */}
+            <City3D 
+              buildings={city?.buildings || []} 
+              territorySize={city?.territory_size || 100}
+              timeOfDay={lightingData.timeOfDay}
+              sunIntensity={lightingData.sunIntensity}
+            />
+            
+            {/* Camera controls */}
             <OrbitControls enablePan maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60} />
-            <Environment preset="night" />
           </Suspense>
         </Canvas>
 
@@ -201,6 +261,16 @@ export default function CityPage() {
             <Shield className={`w-3.5 h-3.5 ${city?.decline_active ? 'text-neon-pink' : 'text-neon-green'}`} />
             <span className={city?.decline_active ? 'text-neon-pink font-bold' : 'text-neon-green font-bold'}>
               {city?.decline_active ? 'Declining — workout now!' : 'Healthy'}
+            </span>
+          </div>
+          {/* Time and lighting info */}
+          <div className="glass-sm px-3 py-2 flex items-center gap-2 text-xs font-mono">
+            <Clock className="w-3.5 h-3.5 text-neon-yellow" />
+            <span className="text-white font-bold">
+              {Math.floor(lightingData.timeOfDay)}:{String(Math.floor((lightingData.timeOfDay % 1) * 60)).padStart(2, '0')}
+            </span>
+            <span className="text-space-400">
+              {lightingData.sunIntensity > 0.1 ? '☀️' : lightingData.moonIntensity > 0.1 ? '🌙' : '🌃'}
             </span>
           </div>
         </div>

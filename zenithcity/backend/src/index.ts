@@ -9,6 +9,7 @@ dotenv.config();
 
 import { initRedis } from './config/redis';
 import { scheduleCityDeclineJob } from './jobs/cityDecline';
+import { setSocketInstance } from './utils/socket';
 
 import authRoutes from './routes/auth';
 import workoutRoutes from './routes/workouts';
@@ -29,6 +30,9 @@ const io = new SocketServer(httpServer, {
     methods: ['GET', 'POST'],
   },
 });
+
+// Set socket instance for use in other modules
+setSocketInstance(io);
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));

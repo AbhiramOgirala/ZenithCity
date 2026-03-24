@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { BUILDING_COSTS, MAX_TERRITORY_SIZE, MAX_BUILDING_LEVEL } from '../utils/points';
+import { emitToUser } from '../utils/socket';
 
 const router = Router();
 
@@ -104,6 +105,13 @@ router.post('/buildings', authMiddleware, async (req: AuthRequest, res: Response
 
     if (error) throw error;
 
+    // Emit socket event for points deduction
+    emitToUser(req.user!.id, 'points:balance_update', {
+      new_balance: newBalance,
+      points_spent: buildingConfig.base_cost,
+      reason: 'building_construction'
+    });
+
     // Return building + new balance so frontend can sync immediately
     res.status(201).json({ building, new_balance: newBalance });
   } catch (err) {
@@ -159,6 +167,13 @@ router.put('/buildings/:id/upgrade', authMiddleware, async (req: AuthRequest, re
       .from('buildings').update({ level: building.level + 1 }).eq('id', req.params.id).select().single();
     if (error) throw error;
 
+    // Emit socket event for points deduction
+    emitToUser(req.user!.id, 'points:balance_update', {
+      new_balance: newBalance,
+      points_spent: upgradeCost,
+      reason: 'building_upgrade'
+    });
+
     res.json({ building: upgraded, new_balance: newBalance });
   } catch (err) {
     res.status(500).json({ error: 'Failed to upgrade building' });
@@ -195,6 +210,13 @@ router.put('/buildings/:id/repair', authMiddleware, async (req: AuthRequest, res
 
     const { data: repaired } = await supabase
       .from('buildings').update({ health: 100, status: 'completed' }).eq('id', req.params.id).select().single();
+
+    // Emit socket event for points deduction
+    emitToUser(req.user!.id, 'points:balance_update', {
+      new_balance: newBalance,
+      points_spent: REPAIR_COST,
+      reason: 'building_repair'
+    });
 
     res.json({ building: repaired, new_balance: newBalance });
   } catch (err) {
@@ -233,6 +255,13 @@ router.post('/expand-territory', authMiddleware, async (req: AuthRequest, res: R
     await supabase.from('users').update({ points_balance: newBalance }).eq('id', req.user!.id);
     const { data: updated } = await supabase
       .from('cities').update({ territory_size: newSize }).eq('id', city.id).select().single();
+
+    // Emit socket event for points deduction
+    emitToUser(req.user!.id, 'points:balance_update', {
+      new_balance: newBalance,
+      points_spent: points_to_spend,
+      reason: 'territory_expansion'
+    });
 
     res.json({ city: updated, expansion_amount: expansion, new_balance: newBalance });
   } catch (err) {

@@ -98,7 +98,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign({ id: userId, email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
-      user: { id: userId, email, username },
+      user: { id: userId, email, username, points_balance: 0 },
       token,
     });
   } catch (err: any) {
@@ -132,7 +132,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
-      user: { id: user.id, email: user.email, username: user.username },
+      user: { id: user.id, email: user.email, username: user.username, points_balance: user.points_balance || 0 },
       token,
     });
   } catch (err) {
@@ -181,7 +181,7 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
       .from('users')
       .update(updates)
       .eq('id', req.user!.id)
-      .select('id, email, username, privacy_mode, battle_auto_enroll')
+      .select('id, email, username, privacy_mode, battle_auto_enroll, points_balance')
       .single();
 
     if (error) throw error;

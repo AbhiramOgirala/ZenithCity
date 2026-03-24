@@ -4,6 +4,7 @@ import { supabase } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { calculateWorkoutPoints, calculateRouteDistance, MIN_WORKOUT_DURATION } from '../utils/points';
 import { ExerciseType, VerificationStatus } from '../types';
+import { emitToUser } from '../utils/socket';
 
 const router = Router();
 
@@ -122,8 +123,18 @@ router.put('/:id/complete', authMiddleware, async (req: AuthRequest, res: Respon
     // Award points — returns the new balance
     const newBalance = await awardPoints(req.user!.id, points, 'workout', id);
 
+    // Update battle points if user is in active battles
+    await updateBattlePoints(req.user!.id, points);
+
     // Update city state (halt decline, restore health)
     await updateCityAfterWorkout(req.user!.id);
+
+    // Emit socket event for real-time points update
+    emitToUser(req.user!.id, 'points:balance_update', {
+      new_balance: newBalance,
+      points_earned: points,
+      reason: 'workout'
+    });
 
     // Return new_balance so frontend can sync immediately without an extra API call
     res.json({ session: updated, points_earned: points, new_balance: newBalance });
@@ -146,6 +157,41 @@ async function awardPoints(userId: string, amount: number, refType: string, refI
     type: 'award', reference_type: refType, reference_id: refId, balance_after: newBalance,
   });
   return newBalance;
+}
+
+async function updateBattlePoints(userId: string, points: number): Promise<void> {
+  try {
+    // Find active battles user is participating in
+    const now = new Date().toISOString();
+    const { data: activeBattles } = await supabase
+      .from('battle_participants')
+      .select('id, battle_points, territory_battles!inner(*)')
+      .eq('user_id', userId)
+      .lte('territory_battles.starts_at', now)
+      .gte('territory_battles.ends_at', now)
+      .eq('territory_battles.status', 'active');
+
+    if (activeBattles && activeBattles.length > 0) {
+      // Update battle points for each active battle
+      for (const battle of activeBattles) {
+        const newBattlePoints = battle.battle_points + points;
+        await supabase
+          .from('battle_participants')
+          .update({ battle_points: newBattlePoints })
+          .eq('id', battle.id);
+
+        // Emit socket event for battle points update
+        emitToUser(userId, 'battle:points_earned', {
+          battle_id: (battle as any).territory_battles.id,
+          battle_points: points,
+          total_battle_points: newBattlePoints
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Failed to update battle points:', err);
+    // Don't throw - battle points are secondary to workout completion
+  }
 }
 
 async function updateCityAfterWorkout(userId: string): Promise<void> {

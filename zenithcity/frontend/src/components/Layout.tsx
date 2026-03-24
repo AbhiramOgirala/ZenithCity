@@ -1,10 +1,11 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, RefreshCw } from 'lucide-react';
 import { RootState, AppDispatch } from '../store';
-import { logout } from '../store/slices/authSlice';
+import { logout, refreshBalance, fetchProfile } from '../store/slices/authSlice';
 import { toggleSidebar } from '../store/slices/uiSlice';
+import { useState, useEffect } from 'react';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -20,10 +21,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { user } = useSelector((s: RootState) => s.auth);
   const { sidebarOpen } = useSelector((s: RootState) => s.ui);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fetch fresh profile data on mount to ensure points balance is current
+  useEffect(() => {
+    if (user) {
+      dispatch(fetchProfile());
+    }
+  }, [dispatch, user?.id]);
 
   const handleLogout = () => {
     dispatch(logout());
     navigate('/auth');
+  };
+
+  const handleRefreshBalance = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await dispatch(refreshBalance()).unwrap();
+    } catch (err) {
+      console.error('Failed to refresh balance:', err);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -69,10 +90,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white truncate">{user?.username}</p>
-              <p className="text-xs text-neon-yellow font-mono flex items-center gap-1">
+              <button 
+                onClick={handleRefreshBalance}
+                className="text-xs text-neon-yellow font-mono flex items-center gap-1 hover:text-neon-cyan transition-colors"
+                disabled={refreshing}
+              >
                 <Zap className="w-3 h-3" />
                 {user?.points_balance?.toLocaleString() || '0'} pts
-              </p>
+                <RefreshCw className={`w-3 h-3 ml-1 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
             </div>
           </div>
         </div>
@@ -131,12 +157,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 glass-sm rounded-lg">
+            <button 
+              onClick={handleRefreshBalance}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 glass-sm rounded-lg hover:bg-white/5 transition-colors"
+              disabled={refreshing}
+            >
               <Zap className="w-4 h-4 text-neon-yellow" />
               <span className="font-mono text-sm font-medium text-neon-yellow">
                 {user?.points_balance?.toLocaleString() || '0'}
               </span>
-            </div>
+              <RefreshCw className={`w-3 h-3 text-neon-cyan ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </header>
 

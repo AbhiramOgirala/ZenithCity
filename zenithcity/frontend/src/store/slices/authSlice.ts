@@ -51,6 +51,15 @@ export const fetchProfile = createAsyncThunk('auth/fetchProfile', async (_, { re
   }
 });
 
+export const refreshBalance = createAsyncThunk('auth/refreshBalance', async (_, { rejectWithValue }) => {
+  try {
+    const data = await api.post('/points/refresh', {});
+    return data.balance;
+  } catch (err: any) {
+    return rejectWithValue(err.message);
+  }
+});
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -62,7 +71,11 @@ const authSlice = createSlice({
       localStorage.removeItem('zenith_user');
     },
     updateBalance(state, action: PayloadAction<number>) {
-      if (state.user) state.user.points_balance = action.payload;
+      if (state.user) {
+        state.user.points_balance = action.payload;
+        // Update localStorage to keep it in sync
+        localStorage.setItem('zenith_user', JSON.stringify(state.user));
+      }
     },
     clearError(state) {
       state.error = null;
@@ -89,7 +102,17 @@ const authSlice = createSlice({
       })
       .addCase(register.rejected, (s, a) => { s.loading = false; s.error = a.payload as string; })
       .addCase(fetchProfile.fulfilled, (s, a) => {
-        if (s.user) s.user = { ...s.user, ...a.payload };
+        if (s.user) {
+          s.user = { ...s.user, ...a.payload };
+          // Update localStorage when profile is fetched
+          localStorage.setItem('zenith_user', JSON.stringify(s.user));
+        }
+      })
+      .addCase(refreshBalance.fulfilled, (s, a) => {
+        if (s.user) {
+          s.user.points_balance = a.payload;
+          localStorage.setItem('zenith_user', JSON.stringify(s.user));
+        }
       });
   },
 });
