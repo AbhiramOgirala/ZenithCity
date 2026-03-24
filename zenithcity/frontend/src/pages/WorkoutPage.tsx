@@ -11,6 +11,8 @@ import { addToast } from '../store/slices/uiSlice';
 import { RootState, AppDispatch } from '../store';
 import WorkoutHistory from '../components/WorkoutHistory';
 import PoseDetector from '../components/PoseDetector';
+import Celebration from '../components/Celebration';
+import { playSuccessSound, playFanfareSound } from '../utils/sounds';
 
 const EXERCISE_TYPES = [
   { id: 'squat',        label: 'Squat',        emoji: '🏋️', type: 'strength', color: 'neon-orange', desc: '2 pts / verified rep' },
@@ -65,6 +67,7 @@ export default function WorkoutPage() {
     totalReps: 0, validReps: 0, formAccuracy: 0,
     feedback: '', poseLandmarks: [], isActive: false,
   });
+  const [showCelebration, setShowCelebration] = useState(false);
 
   // ── Timer: counts up while session active, stops immediately on complete ──
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -163,6 +166,14 @@ export default function WorkoutPage() {
       setAiStats({ totalReps: 0, validReps: 0, formAccuracy: 0, feedback: '', poseLandmarks: [], isActive: false });
       setGpsCoords([]);
       dispatch(fetchDashboard());
+
+      // Play celebration sound + animation
+      playSuccessSound();
+      setShowCelebration(true);
+      setTimeout(() => {
+        playFanfareSound();
+        setShowCelebration(false);
+      }, 2500);
     } else {
       dispatch(addToast({ type: 'error', message: 'Could not save workout — try again' }));
     }
@@ -213,6 +224,8 @@ export default function WorkoutPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
+      {/* Celebration confetti */}
+      <Celebration active={showCelebration} />
       {/* Header */}
       <div>
         <h1 className="text-2xl font-display font-bold text-white">Workout</h1>

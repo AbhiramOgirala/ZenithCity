@@ -25,6 +25,12 @@ export async function initRedis(): Promise<void> {
       lazyConnect: true,
       connectTimeout: 3000,
       maxRetriesPerRequest: 1,
+      retryStrategy: () => null, // Do not retry on failures
+    });
+
+    // Suppress unhandled error events
+    redis.on('error', (err) => {
+      // Ignore errors when using the memory fallback
     });
 
     await redis.connect();
@@ -32,7 +38,6 @@ export async function initRedis(): Promise<void> {
     console.log('✅ Redis connected');
   } catch (err) {
     console.warn('⚠️  Redis unavailable, using in-memory fallback');
-    redis = null;
     redisAvailable = false;
   }
 }

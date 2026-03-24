@@ -13,6 +13,7 @@ import { setSocketInstance } from './utils/socket';
 
 import authRoutes from './routes/auth';
 import workoutRoutes from './routes/workouts';
+import workoutPlanRoutes from './routes/workoutPlan';
 import cityRoutes from './routes/cities';
 import leaderboardRoutes from './routes/leaderboards';
 import battleRoutes from './routes/battles';
@@ -42,6 +43,7 @@ app.use(express.json({ limit: '10mb' }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/workouts', workoutRoutes);
+app.use('/api/workout-plan', workoutPlanRoutes);
 app.use('/api/cities', cityRoutes);
 app.use('/api/leaderboards', leaderboardRoutes);
 app.use('/api/battles', battleRoutes);

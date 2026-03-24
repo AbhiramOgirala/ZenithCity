@@ -11,6 +11,16 @@ CREATE TABLE IF NOT EXISTS users (
   consecutive_correct_sessions INTEGER DEFAULT 0,
   technique_mastery_badge BOOLEAN DEFAULT FALSE,
   points_balance INTEGER DEFAULT 0,
+  fitness_goal VARCHAR(20),
+  height_cm FLOAT,
+  weight_kg FLOAT,
+  age INTEGER,
+  gender VARCHAR(20),
+  health_issues TEXT,
+  onboarding_completed BOOLEAN DEFAULT FALSE,
+  current_streak INTEGER DEFAULT 0,
+  best_streak INTEGER DEFAULT 0,
+  last_workout_date VARCHAR(10),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

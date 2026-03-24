@@ -129,6 +129,9 @@ router.put('/:id/complete', authMiddleware, async (req: AuthRequest, res: Respon
     // Update city state (halt decline, restore health)
     await updateCityAfterWorkout(req.user!.id);
 
+    // Update streak
+    const streakData = await updateStreak(req.user!.id);
+
     // Emit socket event for real-time points update
     emitToUser(req.user!.id, 'points:balance_update', {
       new_balance: newBalance,
@@ -136,8 +139,13 @@ router.put('/:id/complete', authMiddleware, async (req: AuthRequest, res: Respon
       reason: 'workout'
     });
 
+    // Emit streak update
+    if (streakData) {
+      emitToUser(req.user!.id, 'streak:update', streakData);
+    }
+
     // Return new_balance so frontend can sync immediately without an extra API call
-    res.json({ session: updated, points_earned: points, new_balance: newBalance });
+    res.json({ session: updated, points_earned: points, new_balance: newBalance, streak: streakData });
   } catch (err) {
     console.error('Complete workout error:', err);
     res.status(500).json({ error: 'Failed to complete workout' });
@@ -219,6 +227,78 @@ async function updateCityAfterWorkout(userId: string): Promise<void> {
         await supabase.from('buildings').update({ health: newHealth }).eq('id', b.id);
       }
     }
+  }
+}
+
+/**
+ * Update workout streak for a user.
+ * Streak increments if user worked out yesterday or earlier today.
+ * Streak resets to 1 if they missed a day.
+ */
+async function updateStreak(userId: string): Promise<{ current_streak: number; best_streak: number; streak_bonus: number } | null> {
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('current_streak, best_streak, last_workout_date')
+      .eq('id', userId)
+      .single();
+
+    if (!user) return null;
+
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const lastDate = user.last_workout_date;
+
+    let newStreak = user.current_streak || 0;
+
+    if (lastDate === today) {
+      // Already worked out today — no streak change
+      return { current_streak: newStreak, best_streak: user.best_streak || 0, streak_bonus: 0 };
+    }
+
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (lastDate === yesterday) {
+      // Consecutive day — increment streak
+      newStreak += 1;
+    } else {
+      // Missed a day — reset streak
+      newStreak = 1;
+    }
+
+    const newBest = Math.max(newStreak, user.best_streak || 0);
+
+    // Streak bonus: 5 extra points per streak day beyond 2
+    const streakBonus = newStreak > 2 ? (newStreak - 2) * 5 : 0;
+
+    await supabase.from('users').update({
+      current_streak: newStreak,
+      best_streak: newBest,
+      last_workout_date: today,
+    }).eq('id', userId);
+
+    // Award streak bonus points if applicable
+    if (streakBonus > 0) {
+      const { data: freshUser } = await supabase
+        .from('users').select('points_balance').eq('id', userId).single();
+      if (freshUser) {
+        const newBalance = (freshUser.points_balance || 0) + streakBonus;
+        await supabase.from('users').update({ points_balance: newBalance }).eq('id', userId);
+        await supabase.from('points_transactions').insert({
+          id: require('uuid').v4(),
+          user_id: userId,
+          amount: streakBonus,
+          type: 'award',
+          reference_type: 'streak_bonus',
+          reference_id: null,
+          balance_after: newBalance,
+        });
+      }
+    }
+
+    return { current_streak: newStreak, best_streak: newBest, streak_bonus: streakBonus };
+  } catch (err) {
+    console.error('Streak update error:', err);
+    return null;
   }
 }
 

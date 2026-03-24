@@ -24,7 +24,7 @@ function validateUsername(username: string): boolean {
 // POST /api/auth/register
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, username } = req.body;
+    const { email, password, username, fitness_goal, height_cm, weight_kg, age, gender, health_issues } = req.body;
 
     if (!validateEmail(email)) {
       res.status(400).json({ error: 'Invalid email format' });
@@ -39,15 +39,19 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check duplicate email
-    const { data: existing } = await supabase
+    // Check duplicate email or username
+    const { data: existingUsers } = await supabase
       .from('users')
-      .select('id')
-      .eq('email', email)
-      .single();
+      .select('email, username')
+      .or(`email.eq.${email},username.eq.${username}`)
+      .limit(1);
 
-    if (existing) {
-      res.status(409).json({ error: 'Email already registered' });
+    if (existingUsers && existingUsers.length > 0) {
+      if (existingUsers[0].email === email) {
+        res.status(409).json({ error: 'Email already registered' });
+      } else {
+        res.status(409).json({ error: 'Username already taken' });
+      }
       return;
     }
 
@@ -57,7 +61,19 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     // Create user
     const { data: user, error: userError } = await supabase
       .from('users')
-      .insert({ id: userId, email, username, password_hash })
+      .insert({ 
+        id: userId, 
+        email, 
+        username, 
+        password_hash,
+        fitness_goal: fitness_goal || null,
+        height_cm: height_cm ? parseFloat(height_cm) : null,
+        weight_kg: weight_kg ? parseFloat(weight_kg) : null,
+        age: age ? parseInt(age) : null,
+        gender: gender || null,
+        health_issues: health_issues || null,
+        onboarding_completed: true // True because they are onboarding during registration
+      })
       .select()
       .single();
 
@@ -110,29 +126,29 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body; // Actually contains either email or username
 
     const { data: user } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
-      .single();
+      .or(`email.eq.${email},username.eq.${email}`)
+      .limit(1);
 
-    if (!user) {
+    if (!user || user.length === 0) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
-    const valid = await bcrypt.compare(password, user.password_hash);
+    const valid = await bcrypt.compare(password, user[0].password_hash);
     if (!valid) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user[0].id, email: user[0].email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
-      user: { id: user.id, email: user.email, username: user.username, points_balance: user.points_balance || 0 },
+      user: { id: user[0].id, email: user[0].email, username: user[0].username, points_balance: user[0].points_balance || 0 },
       token,
     });
   } catch (err) {
@@ -146,7 +162,7 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('id, email, username, privacy_mode, battle_auto_enroll, technique_mastery_badge, points_balance, created_at')
+      .select('id, email, username, privacy_mode, battle_auto_enroll, technique_mastery_badge, points_balance, fitness_goal, height_cm, weight_kg, age, gender, health_issues, onboarding_completed, current_streak, best_streak, last_workout_date, created_at')
       .eq('id', req.user!.id)
       .single();
 
@@ -164,7 +180,7 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
 // PUT /api/auth/profile
 router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { username, privacy_mode, battle_auto_enroll } = req.body;
+    const { username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues } = req.body;
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
     if (username) {
@@ -176,12 +192,18 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
     }
     if (privacy_mode !== undefined) updates.privacy_mode = privacy_mode;
     if (battle_auto_enroll !== undefined) updates.battle_auto_enroll = battle_auto_enroll;
+    if (fitness_goal !== undefined) updates.fitness_goal = fitness_goal;
+    if (height_cm !== undefined) updates.height_cm = height_cm;
+    if (weight_kg !== undefined) updates.weight_kg = weight_kg;
+    if (age !== undefined) updates.age = age;
+    if (gender !== undefined) updates.gender = gender;
+    if (health_issues !== undefined) updates.health_issues = health_issues;
 
     const { data: user, error } = await supabase
       .from('users')
       .update(updates)
       .eq('id', req.user!.id)
-      .select('id, email, username, privacy_mode, battle_auto_enroll, points_balance')
+      .select('id, email, username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues, points_balance')
       .single();
 
     if (error) throw error;
@@ -192,6 +214,57 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Profile update failed' });
+  }
+});
+
+// POST /api/auth/onboarding — Save onboarding data
+router.post('/onboarding', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { fitness_goal, height_cm, weight_kg, age, gender, health_issues } = req.body;
+
+    // Validate fitness goal
+    const validGoals = ['weight_loss', 'strength', 'endurance'];
+    if (!fitness_goal || !validGoals.includes(fitness_goal)) {
+      res.status(400).json({ error: 'Invalid fitness goal. Must be: weight_loss, strength, or endurance' });
+      return;
+    }
+
+    // Validate numeric fields
+    if (height_cm && (height_cm < 50 || height_cm > 300)) {
+      res.status(400).json({ error: 'Height must be between 50 and 300 cm' });
+      return;
+    }
+    if (weight_kg && (weight_kg < 20 || weight_kg > 400)) {
+      res.status(400).json({ error: 'Weight must be between 20 and 400 kg' });
+      return;
+    }
+    if (age && (age < 10 || age > 120)) {
+      res.status(400).json({ error: 'Age must be between 10 and 120' });
+      return;
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .update({
+        fitness_goal,
+        height_cm: height_cm || null,
+        weight_kg: weight_kg || null,
+        age: age || null,
+        gender: gender || null,
+        health_issues: health_issues || null,
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.user!.id)
+      .select('id, email, username, fitness_goal, height_cm, weight_kg, age, gender, health_issues, onboarding_completed, points_balance')
+      .single();
+
+    if (error) throw error;
+
+    res.json(user);
+  } catch (err) {
+    console.error('Onboarding error:', err);
+    res.status(500).json({ error: 'Failed to save onboarding data' });
   }
 });
 

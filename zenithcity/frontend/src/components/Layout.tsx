@@ -1,15 +1,17 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, RefreshCw, ClipboardList, Bell } from 'lucide-react';
 import { RootState, AppDispatch } from '../store';
 import { logout, refreshBalance, fetchProfile } from '../store/slices/authSlice';
 import { toggleSidebar } from '../store/slices/uiSlice';
 import { useState, useEffect } from 'react';
+import { requestNotificationPermission, scheduleWorkoutReminder } from '../utils/notifications';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/workout', icon: Dumbbell, label: 'Workout' },
+  { to: '/workout-plan', icon: ClipboardList, label: 'Workout Plan' },
   { to: '/city', icon: Building2, label: 'My City' },
   { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
   { to: '/battles', icon: Swords, label: 'Battles' },
@@ -29,6 +31,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       dispatch(fetchProfile());
     }
   }, [dispatch, user?.id]);
+
+  // Request notification permission and schedule reminders
+  useEffect(() => {
+    if (user) {
+      requestNotificationPermission().then(granted => {
+        if (granted) {
+          // Schedule a workout reminder every 4 hours
+          scheduleWorkoutReminder(4 * 60 * 60 * 1000);
+        }
+      });
+    }
+  }, [user?.id]);
 
   const handleLogout = () => {
     dispatch(logout());

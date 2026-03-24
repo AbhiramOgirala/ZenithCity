@@ -73,6 +73,13 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
     const nextRankUser = allUsers.find(u => u.points_balance > viewerPoints);
     const pointsToNextRank = nextRankUser ? nextRankUser.points_balance - viewerPoints : 0;
 
+    // Fetch streak data
+    const { data: streakUser } = await supabase
+      .from('users')
+      .select('current_streak, best_streak, last_workout_date, onboarding_completed')
+      .eq('id', userId)
+      .single();
+
     res.json({
       workouts_last_30_days: workoutCount.count || 0,
       weekly_points,
@@ -81,6 +88,10 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       points_balance: viewerPoints,
       points_to_next_rank: pointsToNextRank,
       upcoming_battles: battles.data || [],
+      current_streak: streakUser?.current_streak || 0,
+      best_streak: streakUser?.best_streak || 0,
+      last_workout_date: streakUser?.last_workout_date || null,
+      onboarding_completed: streakUser?.onboarding_completed || false,
     });
   } catch (err) {
     console.error('Dashboard error:', err);

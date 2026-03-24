@@ -9,6 +9,16 @@ export interface User {
   battle_auto_enroll: boolean;
   consecutive_correct_sessions: number;
   technique_mastery_badge: boolean;
+  fitness_goal: 'weight_loss' | 'strength' | 'endurance' | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  age: number | null;
+  gender: string | null;
+  health_issues: string | null;
+  onboarding_completed: boolean;
+  current_streak: number;
+  best_streak: number;
+  last_workout_date: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -147,4 +157,26 @@ export interface PointsCalculationInput {
   valid_reps: number;
   gps_distance_km: number;
   verification_status: VerificationStatus;
+}
+
+export interface WorkoutPlanDay {
+  day: string;
+  exercises: {
+    type: ExerciseType;
+    name: string;
+    sets: number;
+    reps: number;
+    duration_seconds?: number;
+    rest_seconds: number;
+    notes: string;
+  }[];
+  focus: string;
+}
+
+export interface WorkoutPlan {
+  goal: string;
+  level: string;
+  days_per_week: number;
+  plan: WorkoutPlanDay[];
+  tips: string[];
 }

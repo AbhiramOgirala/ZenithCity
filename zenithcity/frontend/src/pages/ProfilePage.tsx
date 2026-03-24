@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import { User, Lock, Eye, Award, Swords, Shield, Zap, Save, Settings } from 'lucide-react';
+import { User, Lock, Eye, Award, Swords, Shield, Zap, Save, Settings, Dumbbell, Calendar, Ruler, Weight, HeartPulse } from 'lucide-react';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { api } from '../services/api';
@@ -13,6 +13,12 @@ export default function ProfilePage() {
   const [username, setUsername] = useState(user?.username || '');
   const [privacyMode, setPrivacyMode] = useState(user?.privacy_mode || false);
   const [battleAutoEnroll, setBattleAutoEnroll] = useState(user?.battle_auto_enroll !== false);
+  const [fitnessGoal, setFitnessGoal] = useState(user?.fitness_goal || 'weight_loss');
+  const [height, setHeight] = useState(user?.height_cm || '');
+  const [weight, setWeight] = useState(user?.weight_kg || '');
+  const [age, setAge] = useState(user?.age || '');
+  const [gender, setGender] = useState(user?.gender || '');
+  const [healthIssues, setHealthIssues] = useState(user?.health_issues || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { dispatch(fetchProfile()); }, [dispatch]);
@@ -21,13 +27,24 @@ export default function ProfilePage() {
       setUsername(user.username);
       setPrivacyMode(user.privacy_mode || false);
       setBattleAutoEnroll(user.battle_auto_enroll !== false);
+      if (user.fitness_goal) setFitnessGoal(user.fitness_goal);
+      if (user.height_cm) setHeight(user.height_cm);
+      if (user.weight_kg) setWeight(user.weight_kg);
+      if (user.age) setAge(user.age);
+      if (user.gender) setGender(user.gender);
+      if (user.health_issues) setHealthIssues(user.health_issues);
     }
   }, [user]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put('/auth/profile', { username, privacy_mode: privacyMode, battle_auto_enroll: battleAutoEnroll });
+      await api.put('/auth/profile', { 
+        username, privacy_mode: privacyMode, battle_auto_enroll: battleAutoEnroll,
+        fitness_goal: fitnessGoal, height_cm: height ? Number(height) : null,
+        weight_kg: weight ? Number(weight) : null, age: age ? Number(age) : null,
+        gender: gender || null, health_issues: healthIssues || null
+      });
       dispatch(addToast({ type: 'success', message: 'Profile updated!' }));
       dispatch(fetchProfile());
     } catch (err: any) {

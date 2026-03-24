@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Dumbbell, Building2, Trophy, Swords, Zap, TrendingUp, Heart, Map, ArrowRight, Flame, Shield, AlertTriangle } from 'lucide-react';
+import { Dumbbell, Building2, Trophy, Swords, Zap, TrendingUp, Heart, Map, ArrowRight, Flame, Shield, AlertTriangle, Target, ClipboardList } from 'lucide-react';
 import { fetchDashboard } from '../store/slices/dashboardSlice';
 import { RootState, AppDispatch } from '../store';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -91,6 +91,24 @@ export default function DashboardPage() {
         </motion.div>
       )}
 
+      {/* Onboarding prompt */}
+      {data && !data.onboarding_completed && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex items-center gap-3 p-4 border border-neon-cyan/30 bg-neon-cyan/5 rounded-xl"
+        >
+          <Target className="w-5 h-5 text-neon-cyan flex-shrink-0" />
+          <div>
+            <p className="text-neon-cyan font-semibold text-sm">Complete Your Profile</p>
+            <p className="text-space-400 text-xs">Set your fitness goal to get a personalized workout plan!</p>
+          </div>
+          <Link to="/profile" className="ml-auto btn-primary text-xs px-3 py-1.5">
+            Set Up
+          </Link>
+        </motion.div>
+      )}
+
       {/* Stats grid */}
       <motion.div
         variants={containerVariants}
@@ -135,6 +153,37 @@ export default function DashboardPage() {
             <p className="text-xs text-neon-pink">{damagedBuildings} damaged</p>
           )}
         </motion.div>
+      </motion.div>
+
+      {/* Streak card */}
+      <motion.div
+        variants={itemVariants}
+        initial="hidden"
+        animate="visible"
+        className="glass border border-neon-orange/20 p-5 flex items-center gap-5"
+      >
+        <div className="w-14 h-14 rounded-2xl bg-neon-orange/10 border border-neon-orange/30 flex items-center justify-center flex-shrink-0">
+          <Flame className={`w-7 h-7 ${(data?.current_streak || 0) > 0 ? 'text-neon-orange animate-pulse' : 'text-space-500'}`} />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-display font-black text-neon-orange">
+              {data?.current_streak || 0}
+            </span>
+            <span className="text-sm text-space-400">day streak</span>
+          </div>
+          <div className="flex items-center gap-4 mt-1">
+            <span className="text-xs text-space-500 font-mono">Best: {data?.best_streak || 0} days</span>
+            {(data?.current_streak || 0) > 2 && (
+              <span className="text-xs text-neon-yellow font-mono flex items-center gap-1">
+                <Zap className="w-3 h-3" />+{((data?.current_streak || 0) - 2) * 5} streak bonus
+              </span>
+            )}
+          </div>
+        </div>
+        <Link to="/workout" className="btn-primary text-xs px-4 py-2 hidden sm:flex items-center gap-1.5">
+          <Dumbbell className="w-3.5 h-3.5" /> Extend Streak
+        </Link>
       </motion.div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -271,9 +320,9 @@ export default function DashboardPage() {
       >
         {[
           { to: '/workout', icon: Dumbbell, label: 'Start Workout', color: 'neon-orange', desc: 'Earn points & build' },
+          { to: '/workout-plan', icon: ClipboardList, label: 'Workout Plan', color: 'neon-green', desc: 'Your personalized plan' },
           { to: '/city', icon: Building2, label: 'Manage City', color: 'neon-cyan', desc: 'Construct & upgrade' },
           { to: '/leaderboard', icon: Trophy, label: 'Leaderboard', color: 'neon-yellow', desc: 'See your rank' },
-          { to: '/battles', icon: Swords, label: 'Join Battle', color: 'neon-purple', desc: 'Win territory' },
         ].map(({ to, icon: Icon, label, color, desc }) => (
           <Link
             key={to}
