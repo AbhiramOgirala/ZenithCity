@@ -9,6 +9,15 @@ interface User {
   technique_mastery_badge?: boolean;
   privacy_mode?: boolean;
   battle_auto_enroll?: boolean;
+  fitness_goal?: string;
+  height_cm?: number;
+  weight_kg?: number;
+  age?: number;
+  gender?: string;
+  health_issues?: string;
+  target_weight_kg?: number;
+  time_period_weeks?: number;
+  time_per_day_minutes?: number;
 }
 
 interface AuthState {

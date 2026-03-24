@@ -1,7 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, ClipboardList, Apple } from 'lucide-react';
 import { RootState, AppDispatch } from '../store';
 import { logout } from '../store/slices/authSlice';
 import { toggleSidebar } from '../store/slices/uiSlice';
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/workout', icon: Dumbbell, label: 'Workout' },
   { to: '/workout-plan', icon: ClipboardList, label: 'Workout Plan' },
+  { to: '/nutrition', icon: Apple, label: 'Nutrition' },
   { to: '/city', icon: Building2, label: 'My City' },
   { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
   { to: '/battles', icon: Swords, label: 'Battles' },

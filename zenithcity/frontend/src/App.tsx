@@ -7,6 +7,7 @@ import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
 import WorkoutPage from './pages/WorkoutPage';
 import WorkoutPlanPage from './pages/WorkoutPlanPage';
+import NutritionPage from './pages/NutritionPage';
 import CityPage from './pages/CityPage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import BattlesPage from './pages/BattlesPage';
@@ -50,6 +51,7 @@ function AppContent() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/workout" element={<WorkoutPage />} />
               <Route path="/workout-plan" element={<WorkoutPlanPage />} />
+              <Route path="/nutrition" element={<NutritionPage />} />
               <Route path="/city" element={<CityPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/battles" element={<BattlesPage />} />
