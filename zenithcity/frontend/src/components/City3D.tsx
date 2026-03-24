@@ -17,7 +17,7 @@ import * as THREE from 'three';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 import DraggableBuilding from './DraggableBuilding';
-import BuildingPlacer from './BuildingPlacer';
+import SimpleBuildingPlacer from './SimpleBuildingPlacer';
 
 interface BuildingData {
   id: string; type: string; level: number;
@@ -428,21 +428,47 @@ function Stadium({ level, damaged, timeOfDay = 12 }: { level: number; damaged: b
     const c = document.createElement('canvas');
     c.width = 256; c.height = 64;
     const ctx = c.getContext('2d')!;
-    const colors = ['#F44336','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
+    const colors = damaged ? ['#444', '#555', '#666'] : ['#F44336','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
     for (let i = 0; i < 256; i += 4) {
       ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
       ctx.fillRect(i, 0, 4, 64);
     }
     return new THREE.CanvasTexture(c);
-  }, []);
+  }, [damaged]);
 
   return (
     <group>
-      {/* Outer wall ring */}
+      {/* Base foundation */}
+      <mesh position={[0, 0.1, 0]} receiveShadow>
+        <cylinderGeometry args={[outerR + 0.5, outerR + 0.5, 0.2, 48]} />
+        <meshStandardMaterial color={damaged ? '#333' : '#8D6E63'} roughness={0.8} />
+      </mesh>
+
+      {/* Outer wall ring - more detailed */}
       <mesh position={[0, ringH / 2, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[outerR, outerR * 1.04, ringH, 48]} />
-        <meshStandardMaterial color={damaged ? '#666' : '#ECEFF1'} roughness={0.5} metalness={0.1} />
+        <meshStandardMaterial 
+          color={damaged ? '#666' : '#ECEFF1'} 
+          roughness={0.3} 
+          metalness={0.2}
+          emissive={damaged ? '#000' : '#E3F2FD'}
+          emissiveIntensity={0.05}
+        />
       </mesh>
+
+      {/* Architectural details - horizontal bands */}
+      {[0.3, 0.6, 0.9].map((frac, i) => (
+        <mesh key={`band-${i}`} position={[0, ringH * frac, 0]}>
+          <cylinderGeometry args={[outerR * 1.02, outerR * 1.02, 0.1, 48]} />
+          <meshStandardMaterial 
+            color={damaged ? '#555' : '#FF6B35'} 
+            roughness={0.2} 
+            metalness={0.6}
+            emissive={damaged ? '#000' : '#FF6B35'}
+            emissiveIntensity={0.1}
+          />
+        </mesh>
+      ))}
 
       {/* Stands interior (visible from above) */}
       <mesh position={[0, ringH * 0.6, 0]}>
@@ -450,68 +476,175 @@ function Stadium({ level, damaged, timeOfDay = 12 }: { level: number; damaged: b
         <meshStandardMaterial side={THREE.BackSide} map={standsTex} roughness={0.9} />
       </mesh>
 
-      {/* Field */}
+      {/* Field - more realistic */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} receiveShadow>
         <circleGeometry args={[innerR * 0.97, 48]} />
-        <meshStandardMaterial color={damaged ? '#3A4A30' : '#4CAF50'} roughness={0.9} />
+        <meshStandardMaterial 
+          color={damaged ? '#3A4A30' : '#2E7D32'} 
+          roughness={0.9}
+          emissive={damaged ? '#000' : '#1B5E20'}
+          emissiveIntensity={0.05}
+        />
       </mesh>
 
-      {/* Field markings */}
+      {/* Field markings - more detailed */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
         <ringGeometry args={[innerR * 0.3, innerR * 0.32, 32]} />
-        <meshStandardMaterial color="white" roughness={0.9} />
+        <meshStandardMaterial color="white" roughness={0.9} emissive="#FFFFFF" emissiveIntensity={0.1} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
         <planeGeometry args={[innerR * 1.8, 0.1]} />
-        <meshStandardMaterial color="white" roughness={0.9} />
+        <meshStandardMaterial color="white" roughness={0.9} emissive="#FFFFFF" emissiveIntensity={0.1} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, Math.PI / 2, 0]} position={[0, 0.06, 0]}>
         <planeGeometry args={[innerR * 1.8, 0.1]} />
-        <meshStandardMaterial color="white" roughness={0.9} />
+        <meshStandardMaterial color="white" roughness={0.9} emissive="#FFFFFF" emissiveIntensity={0.1} />
       </mesh>
 
-      {/* Concourse rim */}
+      {/* Goal posts */}
+      {[1, -1].map((dir, i) => (
+        <group key={`goal-${i}`} position={[0, 0, dir * innerR * 0.8]}>
+          <mesh position={[-0.3, 0.8, 0]}>
+            <cylinderGeometry args={[0.03, 0.03, 1.6, 8]} />
+            <meshStandardMaterial color="white" roughness={0.3} metalness={0.1} />
+          </mesh>
+          <mesh position={[0.3, 0.8, 0]}>
+            <cylinderGeometry args={[0.03, 0.03, 1.6, 8]} />
+            <meshStandardMaterial color="white" roughness={0.3} metalness={0.1} />
+          </mesh>
+          <mesh position={[0, 1.6, 0]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.03, 0.03, 0.6, 8]} />
+            <meshStandardMaterial color="white" roughness={0.3} metalness={0.1} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Roof structure */}
+      <mesh position={[0, ringH + 0.8, 0]} castShadow>
+        <cylinderGeometry args={[outerR * 1.1, outerR * 0.9, 0.3, 48]} />
+        <meshStandardMaterial 
+          color={damaged ? '#444' : '#37474F'} 
+          roughness={0.1} 
+          metalness={0.8}
+          emissive={damaged ? '#000' : '#263238'}
+          emissiveIntensity={0.1}
+        />
+      </mesh>
+
+      {/* Concourse rim - enhanced */}
       <mesh position={[0, ringH + 0.15, 0]} castShadow>
         <torusGeometry args={[(outerR + innerR * 0.6) / 1.8, 0.28, 8, 48]} />
-        <meshStandardMaterial color="#FF6B35" roughness={0.3} metalness={0.4}
-          emissive={damaged ? '#000' : '#FF6B35'} emissiveIntensity={0.1} />
+        <meshStandardMaterial 
+          color={damaged ? '#555' : '#FF6B35'} 
+          roughness={0.2} 
+          metalness={0.6}
+          emissive={damaged ? '#000' : '#FF6B35'} 
+          emissiveIntensity={damaged ? 0 : 0.2} 
+        />
       </mesh>
 
-      {/* Tiered seating rings */}
+      {/* Tiered seating rings - more prominent */}
       {[0.3, 0.6, 0.85].map((frac, i) => (
         <mesh key={i} position={[0, ringH * (i * 0.25 + 0.1), 0]}>
-          <torusGeometry args={[innerR + (outerR - innerR) * frac, 0.12, 4, 48]} />
-          <meshStandardMaterial color="#CFD8DC" roughness={0.7} />
+          <torusGeometry args={[innerR + (outerR - innerR) * frac, 0.15, 6, 48]} />
+          <meshStandardMaterial 
+            color={damaged ? '#555' : '#CFD8DC'} 
+            roughness={0.5}
+            metalness={0.2}
+          />
         </mesh>
       ))}
 
-      {/* Floodlight towers */}
+      {/* Floodlight towers - enhanced */}
       {Array.from({ length: lightCount }).map((_, i) => {
         const a = (i / lightCount) * Math.PI * 2;
-        const lx = Math.cos(a) * (outerR + 0.4);
-        const lz = Math.sin(a) * (outerR + 0.4);
+        const lx = Math.cos(a) * (outerR + 0.6);
+        const lz = Math.sin(a) * (outerR + 0.6);
         return (
           <group key={i} position={[lx, 0, lz]}>
+            {/* Tower base */}
+            <mesh position={[0, 0.3, 0]}>
+              <cylinderGeometry args={[0.15, 0.2, 0.6, 8]} />
+              <meshStandardMaterial color={damaged ? '#444' : '#607D8B'} metalness={0.7} roughness={0.3} />
+            </mesh>
+            {/* Tower pole */}
             <mesh position={[0, ringH + 1.8, 0]} castShadow>
-              <cylinderGeometry args={[0.06, 0.09, ringH + 3.5, 4]} />
-              <meshStandardMaterial color="#90A4AE" metalness={0.7} roughness={0.2} />
+              <cylinderGeometry args={[0.06, 0.09, ringH + 3.5, 8]} />
+              <meshStandardMaterial color={damaged ? '#555' : '#90A4AE'} metalness={0.8} roughness={0.2} />
             </mesh>
+            {/* Light fixture */}
             <mesh position={[0, ringH + 3.6, 0]}>
-              <boxGeometry args={[0.6, 0.1, 0.35]} />
-              <meshStandardMaterial color="#FAFAFA"
-                emissive={damaged ? '#000' : '#FFFDE7'} emissiveIntensity={0.8} />
+              <boxGeometry args={[0.8, 0.15, 0.4]} />
+              <meshStandardMaterial 
+                color={damaged ? '#333' : '#FAFAFA'}
+                emissive={damaged ? '#000' : '#FFFDE7'} 
+                emissiveIntensity={damaged ? 0 : 0.8}
+                metalness={0.1}
+                roughness={0.2}
+              />
             </mesh>
+            {/* Light beam effect */}
             {!damaged && (
-              <pointLight position={[0, ringH + 3.7, 0]}
-                color="#FFF9C4" intensity={0.8} distance={10} />
+              <>
+                <pointLight 
+                  position={[0, ringH + 3.7, 0]}
+                  color="#FFF9C4" 
+                  intensity={1.2} 
+                  distance={15}
+                  decay={2}
+                />
+                <mesh position={[0, ringH + 3.7, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                  <coneGeometry args={[2, 4, 8, 1, true]} />
+                  <meshBasicMaterial 
+                    color="#FFFDE7" 
+                    transparent 
+                    opacity={0.1}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+              </>
             )}
           </group>
         );
       })}
 
-      {!damaged && (
-        <pointLight position={[0, ringH, 0]} color="#FF8C00" intensity={1.2} distance={16} />
+      {/* Stadium name/logo area */}
+      <mesh position={[0, ringH * 0.8, outerR * 1.02]} castShadow>
+        <planeGeometry args={[2, 0.8]} />
+        <meshStandardMaterial 
+          color={damaged ? '#333' : '#1976D2'} 
+          emissive={damaged ? '#000' : '#0D47A1'}
+          emissiveIntensity={damaged ? 0 : 0.3}
+        />
+      </mesh>
+
+      {/* Health indicator ring */}
+      {damaged && (
+        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[outerR + 0.8, outerR + 1.0, 32]} />
+          <meshBasicMaterial color="#FF1744" transparent opacity={0.6} />
+        </mesh>
       )}
+
+      {/* Central lighting */}
+      {!damaged && (
+        <>
+          <pointLight position={[0, ringH + 1, 0]} color="#FF8C00" intensity={1.5} distance={20} />
+          <pointLight position={[0, ringH / 2, 0]} color="#4CAF50" intensity={0.8} distance={12} />
+        </>
+      )}
+
+      {/* Crowd effect (small dots representing people) */}
+      {!damaged && Array.from({ length: 24 }).map((_, i) => {
+        const a = (i / 24) * Math.PI * 2;
+        const r = innerR + (outerR - innerR) * 0.7;
+        return (
+          <mesh key={`crowd-${i}`} position={[Math.cos(a) * r, ringH * 0.4, Math.sin(a) * r]}>
+            <sphereGeometry args={[0.02, 4, 4]} />
+            <meshStandardMaterial color="#FFC107" emissive="#FF8F00" emissiveIntensity={0.2} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
@@ -1002,6 +1135,59 @@ export default function City3D({
       <CityGround timeOfDay={timeOfDay} />
       <TerritoryBoundary size={territorySize} />
 
+      {/* Invisible ground plane for click detection */}
+      {placementMode && (
+        <mesh 
+          rotation={[-Math.PI / 2, 0, 0]} 
+          position={[0, -0.01, 0]}
+          visible={false}
+        >
+          <planeGeometry args={[200, 200]} />
+          <meshBasicMaterial transparent opacity={0} />
+        </mesh>
+      )}
+
+      {/* Visual grid overlay in placement mode */}
+      {placementMode && (
+        <group>
+          {/* Grid lines */}
+          {Array.from({ length: 21 }, (_, i) => i - 10).map(i => (
+            <group key={`grid-${i}`}>
+              {/* Vertical lines */}
+              <line>
+                <bufferGeometry>
+                  <bufferAttribute
+                    attach="attributes-position"
+                    count={2}
+                    array={new Float32Array([
+                      i * 2, 0.001, -40,
+                      i * 2, 0.001, 40
+                    ])}
+                    itemSize={3}
+                  />
+                </bufferGeometry>
+                <lineBasicMaterial color="#00ff00" transparent opacity={0.1} />
+              </line>
+              {/* Horizontal lines */}
+              <line>
+                <bufferGeometry>
+                  <bufferAttribute
+                    attach="attributes-position"
+                    count={2}
+                    array={new Float32Array([
+                      -40, 0.001, i * 2,
+                      40, 0.001, i * 2
+                    ])}
+                    itemSize={3}
+                  />
+                </bufferGeometry>
+                <lineBasicMaterial color="#00ff00" transparent opacity={0.1} />
+              </line>
+            </group>
+          ))}
+        </group>
+      )}
+
       {/* Street lamps at intersections */}
       {[-10, 0, 10].flatMap(x => [-10, 0, 10].map(z => (
         <StreetLamp key={`l${x}${z}`} x={x + 1.2} z={z + 1.2} />
@@ -1016,6 +1202,8 @@ export default function City3D({
           onMove={onBuildingMove || (() => {})}
           territorySize={territorySize}
           isDragMode={isDragMode}
+          existingBuildings={buildings}
+          buildingType={b.type}
         >
           {b.status === 'under_construction'
             ? <UnderConstruction type={b.type} />
@@ -1034,11 +1222,10 @@ export default function City3D({
 
       {/* Building placement mode */}
       {placementMode && onBuildingPlace && onPlacementCancel && (
-        <BuildingPlacer
+        <SimpleBuildingPlacer
           buildingType={placementMode}
           onPlace={onBuildingPlace}
           onCancel={onPlacementCancel}
-          territorySize={territorySize}
         />
       )}
     </group>

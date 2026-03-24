@@ -235,7 +235,10 @@ export default function CityPage() {
       <div className="flex-1 relative min-h-0" style={{ minHeight: '420px' }}>
         <Canvas
           camera={{ position: [22, 18, 22], fov: 48 }}
-          style={{ background: 'transparent' }}
+          style={{ 
+            background: 'transparent',
+            cursor: placementMode ? 'crosshair' : isDragMode ? 'grab' : 'default'
+          }}
           shadows
           dpr={[1, 2]} // Limit device pixel ratio for performance
           performance={{ min: 0.5 }} // Allow frame rate to drop to maintain performance
@@ -267,7 +270,13 @@ export default function CityPage() {
             />
             
             {/* Camera controls */}
-            <OrbitControls enablePan maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60} />
+            <OrbitControls 
+              enablePan={!placementMode && !isDragMode} 
+              enabled={!placementMode && !isDragMode}
+              maxPolarAngle={Math.PI / 2.1} 
+              minDistance={5} 
+              maxDistance={60} 
+            />
           </Suspense>
         </Canvas>
 
@@ -432,8 +441,9 @@ export default function CityPage() {
                     <div className="glass-sm rounded-xl p-3 border border-neon-cyan/20">
                       <p className="text-xs text-neon-cyan font-semibold mb-1">🎯 Placement Mode Active</p>
                       <p className="text-xs text-space-300">
-                        Move your mouse to position the building, then <strong>click</strong> to place it.
-                        <strong> Right-click</strong> to cancel.
+                        Move your mouse to position the building, then <strong>LEFT-CLICK</strong> to place it anywhere.
+                        <br />
+                        <strong>RIGHT-CLICK</strong> or <strong>ESC</strong> to cancel.
                       </p>
                     </div>
                   )}
