@@ -26,6 +26,11 @@ const BUILDING_TYPES = [
   { id: 'stadium',   label: 'Stadium',   cost: 5000, emoji: '🏟️', desc: 'Epic venue' },
 ];
 
+interface SelectedBuilding {
+  id: string; type: string; level: number; status: string; health: number;
+  screenX: number; screenY: number;
+}
+
 // Auto-complete buildings whose timer has expired
 function useAutoCompleteBuildings() {
   const dispatch = useDispatch<AppDispatch>();
@@ -82,9 +87,9 @@ export default function CityPage() {
   const [selectedType, setSelectedType] = useState('house');
   const [activeTab, setActiveTab] = useState<'build' | 'buildings'>('build');
   const [constructing, setConstructing] = useState(false);
-  // placement mode: null = orbit mode, string = placing that building type
   const [placementType, setPlacementType] = useState<string | null>(null);
-  // 'auto' uses system time; 'day' forces day; 'night' forces night
+  const [selectedBuilding, setSelectedBuilding] = useState<SelectedBuilding | null>(null);
+  const [demolishingId, setDemolishingId] = useState<string | null>(null);
   const [lightMode, setLightMode] = useState<'auto' | 'day' | 'night'>('auto');
 
   const systemHour = new Date().getHours();
@@ -166,6 +171,26 @@ export default function CityPage() {
     }
   };
 
+  const handleBuildingClick = useCallback((b: any, screenX: number, screenY: number) => {
+    if (placementType) return;
+    setSelectedBuilding({ id: b.id, type: b.type, level: b.level, status: b.status, health: b.health, screenX, screenY });
+  }, [placementType]);
+
+  const handleDemolishStart = () => {
+    if (!selectedBuilding) return;
+    setDemolishingId(selectedBuilding.id);
+    setSelectedBuilding(null);
+  };
+
+  const handleDemolishDone = useCallback(async () => {
+    if (!demolishingId) return;
+    const id = demolishingId;
+    setDemolishingId(null);
+    const b = city?.buildings.find(b => b.id === id);
+    await dispatch(deleteBuilding(id));
+    dispatch(addToast({ type: 'success', message: `💥 ${b?.type ?? 'Building'} demolished!` }));
+  }, [demolishingId, city, dispatch]);
+
   const completedBuildings    = city?.buildings?.filter(b => b.status === 'completed') || [];
   const constructingBuildings = city?.buildings?.filter(b => b.status === 'under_construction') || [];
   const damagedBuildings      = city?.buildings?.filter(b => b.status === 'damaged') || [];
@@ -201,6 +226,9 @@ export default function CityPage() {
               territorySize={city?.territory_size || 100}
               placementType={placementType}
               onPlace={handlePlace}
+              onBuildingClick={handleBuildingClick}
+              demolishingId={demolishingId}
+              onDemolishDone={handleDemolishDone}
             />
             <OrbitControls
               enablePan={!placementType}
@@ -292,6 +320,71 @@ export default function CityPage() {
             >
               <X className="w-4 h-4" /> Cancel
             </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Building info popup on click */}
+        <AnimatePresence>
+          {selectedBuilding && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.85, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.85, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="absolute z-20 pointer-events-auto"
+              style={{
+                left: Math.min(selectedBuilding.screenX - 80, window.innerWidth - 200),
+                top: Math.max(selectedBuilding.screenY - 160, 8),
+              }}
+            >
+              <div className="glass border border-white/10 rounded-2xl p-4 w-48 shadow-2xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{BUILDING_TYPES.find(t => t.id === selectedBuilding.type)?.emoji}</span>
+                    <div>
+                      <p className="text-white font-semibold text-sm capitalize">{selectedBuilding.type}</p>
+                      <p className="text-space-400 text-xs font-mono">Lvl {selectedBuilding.level}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedBuilding(null)} className="text-space-500 hover:text-white transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-space-400">Health</span>
+                    <span className={selectedBuilding.health > 60 ? 'text-neon-green' : selectedBuilding.health > 30 ? 'text-neon-yellow' : 'text-neon-pink'}>
+                      {selectedBuilding.health}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1 bg-space-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${selectedBuilding.health}%`,
+                        background: selectedBuilding.health > 60 ? '#39ff14' : selectedBuilding.health > 30 ? '#ffd93d' : '#ff2d55',
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-space-400">Status</span>
+                    <span className={
+                      selectedBuilding.status === 'completed' ? 'text-neon-green' :
+                      selectedBuilding.status === 'under_construction' ? 'text-neon-yellow' : 'text-neon-pink'
+                    }>
+                      {selectedBuilding.status === 'under_construction' ? 'Building...' :
+                       selectedBuilding.status === 'damaged' ? 'Damaged' : 'Active'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDemolishStart}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-neon-pink/10 border border-neon-pink/40 text-neon-pink text-xs font-semibold hover:bg-neon-pink/20 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Demolish
+                </button>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -441,13 +534,6 @@ export default function CityPage() {
                               <BuildingCountdown completedAt={b.construction_completed_at} />
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleDelete(b.id, b.type)}
-                            className="text-xs px-2 py-1.5 rounded-lg flex items-center gap-1 bg-space-800 border border-space-700 text-space-500 hover:border-neon-pink/40 hover:text-neon-pink transition-all"
-                            title="Demolish"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
                         </div>
                       ))}
                     </>
@@ -535,13 +621,6 @@ export default function CityPage() {
                                 {canUpgrade ? `${upgradeCost}pts` : <Lock className="w-3 h-3" />}
                               </button>
                             )}
-                            <button
-                              onClick={() => handleDelete(b.id, b.type)}
-                              className="text-xs px-2 py-1.5 rounded-lg flex items-center gap-1 bg-space-800 border border-space-700 text-space-500 hover:border-neon-pink/40 hover:text-neon-pink transition-all"
-                              title="Demolish"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
                           </div>
                         );
                       })}

@@ -10,9 +10,9 @@
  * window-grid textures drawn on canvas, and proper architectural massing.
  */
 
-import React, { useRef, useMemo, Suspense, useEffect } from 'react';
+import React, { useRef, useMemo, Suspense, useEffect, useState, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, Float, Edges } from '@react-three/drei';
+import { useGLTF, Float } from '@react-three/drei';
 import * as THREE from 'three';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -741,6 +741,108 @@ function TerritoryBoundary({ size }: { size: number }) {
   );
 }
 
+// ─── Demolish Animation ───────────────────────────────────────────────────────
+interface DebrisChunk {
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  rot: THREE.Euler;
+  rotVel: THREE.Vector3;
+  scale: number;
+  color: string;
+}
+
+function DemolishAnimation({ type, onDone }: { type: string; onDone: () => void }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const dustRef  = useRef<THREE.Mesh>(null);
+  const t = useRef(0);
+  const done = useRef(false);
+
+  const buildingH = { house: 3, apartment: 6, office: 10, park: 1, stadium: 5 }[type] || 4;
+  const colors = ['#888', '#666', '#aaa', '#555', '#999', '#C07050', '#607D8B'];
+
+  const chunks = useMemo<DebrisChunk[]>(() => {
+    return Array.from({ length: 18 }, (_, i) => {
+      const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.5;
+      const speed = 3 + Math.random() * 5;
+      return {
+        pos: new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          Math.random() * buildingH * 0.8,
+          (Math.random() - 0.5) * 2,
+        ),
+        vel: new THREE.Vector3(
+          Math.cos(angle) * speed,
+          4 + Math.random() * 6,
+          Math.sin(angle) * speed,
+        ),
+        rot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
+        rotVel: new THREE.Vector3(
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8,
+        ),
+        scale: 0.15 + Math.random() * 0.45,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      };
+    });
+  }, [buildingH]);
+
+  useFrame((_, delta) => {
+    if (done.current) return;
+    t.current += delta;
+    const dt = Math.min(delta, 0.05);
+
+    // Animate each chunk
+    if (groupRef.current) {
+      groupRef.current.children.forEach((child, i) => {
+        if (i >= chunks.length) return;
+        const c = chunks[i];
+        c.vel.y -= 12 * dt; // gravity
+        c.pos.addScaledVector(c.vel, dt);
+        if (c.pos.y < 0) { c.pos.y = 0; c.vel.y *= -0.3; c.vel.x *= 0.7; c.vel.z *= 0.7; }
+        child.position.copy(c.pos);
+        child.rotation.x += c.rotVel.x * dt;
+        child.rotation.y += c.rotVel.y * dt;
+        child.rotation.z += c.rotVel.z * dt;
+        // Fade out after 0.8s
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (t.current > 0.8) mat.opacity = Math.max(0, 1 - (t.current - 0.8) / 0.6);
+      });
+    }
+
+    // Dust ring expands
+    if (dustRef.current) {
+      const s = 1 + t.current * 8;
+      dustRef.current.scale.set(s, 1, s);
+      (dustRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.4 - t.current * 0.4);
+    }
+
+    if (t.current > 1.6 && !done.current) {
+      done.current = true;
+      onDone();
+    }
+  });
+
+  return (
+    <group>
+      {/* Debris chunks */}
+      <group ref={groupRef}>
+        {chunks.map((c, i) => (
+          <mesh key={i} position={c.pos.clone()} rotation={c.rot} scale={c.scale}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color={c.color} transparent opacity={1} roughness={0.9} />
+          </mesh>
+        ))}
+      </group>
+      {/* Dust ring */}
+      <mesh ref={dustRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+        <ringGeometry args={[0.5, 1.5, 32]} />
+        <meshBasicMaterial color="#c8a87a" transparent opacity={0.4} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
 // ─── Placement Ghost ──────────────────────────────────────────────────────────
 function PlacementGhost({ type, onPlace }: { type: string; onPlace: (x: number, z: number) => void }) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -810,40 +912,63 @@ export default function City3D({
   territorySize = 100,
   placementType,
   onPlace,
+  onBuildingClick,
+  demolishingId,
+  onDemolishDone,
 }: {
   buildings: BuildingData[];
   territorySize?: number;
   placementType?: string | null;
   onPlace?: (x: number, z: number) => void;
+  onBuildingClick?: (b: BuildingData, screenX: number, screenY: number) => void;
+  demolishingId?: string | null;
+  onDemolishDone?: () => void;
 }) {
   return (
     <group>
       <CityGround />
       <TerritoryBoundary size={territorySize} />
 
-      {/* Street lamps at intersections */}
       {[-10, 0, 10].flatMap(x => [-10, 0, 10].map(z => (
         <StreetLamp key={`l${x}${z}`} x={x + 1.2} z={z + 1.2} />
       )))}
 
-      {/* Buildings */}
-      {buildings.map(b => (
-        <group key={b.id} position={[b.position_x, b.position_y, b.position_z]}>
-          {b.status === 'under_construction'
-            ? <UnderConstruction type={b.type} />
-            : <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} />
-          }
-          {b.status === 'damaged' && (
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
-              <ringGeometry args={[1.5, 2.0, 32]} />
-              <meshStandardMaterial color="#FF0040" emissive="#FF0040" emissiveIntensity={0.6}
-                transparent opacity={0.25} />
-            </mesh>
-          )}
-        </group>
-      ))}
+      {buildings.map(b => {
+        const isDemolishing = demolishingId === b.id;
+        return (
+          <group
+            key={b.id}
+            position={[b.position_x, b.position_y, b.position_z]}
+            onClick={e => {
+              if (placementType) return;
+              e.stopPropagation();
+              onBuildingClick?.(b, e.nativeEvent.clientX, e.nativeEvent.clientY);
+            }}
+          >
+            {isDemolishing ? (
+              <DemolishAnimation type={b.type} onDone={() => onDemolishDone?.()} />
+            ) : b.status === 'under_construction' ? (
+              <UnderConstruction type={b.type} />
+            ) : (
+              <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} />
+            )}
+            {b.status === 'damaged' && !isDemolishing && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+                <ringGeometry args={[1.5, 2.0, 32]} />
+                <meshStandardMaterial color="#FF0040" emissive="#FF0040" emissiveIntensity={0.6}
+                  transparent opacity={0.25} />
+              </mesh>
+            )}
+            {/* Selection ring */}
+            {!isDemolishing && !placementType && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}
+                visible={false} // toggled via CSS overlay, ring shown via outline
+              />
+            )}
+          </group>
+        );
+      })}
 
-      {/* Placement ghost */}
       {placementType && onPlace && (
         <PlacementGhost type={placementType} onPlace={onPlace} />
       )}
@@ -851,5 +976,12 @@ export default function City3D({
   );
 }
 
-// Preload GLB models silently (ignored if files don't exist)
-Object.values(MODEL_PATHS).forEach(p => { try { useGLTF.preload(p); } catch {} });
+// Preload GLB models silently — only if files actually exist
+// (skipped in dev when models haven't been downloaded)
+if (typeof window !== 'undefined') {
+  Object.values(MODEL_PATHS).forEach(p => {
+    fetch(p, { method: 'HEAD' }).then(r => {
+      if (r.ok) try { useGLTF.preload(p); } catch {}
+    }).catch(() => {});
+  });
+}
