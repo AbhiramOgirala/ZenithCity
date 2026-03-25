@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Debug - ZenithCity</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#00F5FF">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #020614;
+            color: white;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        .debug-section {
+            background: rgba(0,245,255,0.1);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border: 1px solid rgba(0,245,255,0.3);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success { background: rgba(0,255,0,0.2); color: #90EE90; }
+        .error { background: rgba(255,0,0,0.2); color: #FFB6C1; }
+        .info { background: rgba(0,245,255,0.2); color: #87CEEB; }
+        .warning { background: rgba(255,165,0,0.2); color: #FFD700; }
+        button {
+            background: #00F5FF;
+            color: #020614;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 12px;
+        }
+        #log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐛 PWA Install Debug Tool</h1>
+    
+    <div class="debug-section">
+        <h3>📱 Device & Browser Info</h3>
+        <div id="device-info"></div>
+    </div>
+
+    <div class="debug-section">
+        <h3>🔍 PWA Requirements Check</h3>
+        <div id="requirements-check"></div>
+        <button onclick="checkRequirements()">Recheck Requirements</button>
+    </div>
+
+    <div class="debug-section">
+        <h3>📦 Install Event Monitoring</h3>
+        <div id="install-events"></div>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div class="debug-section">
+        <h3>📋 Real-time Log</h3>
+        <div id="log"></div>
+    </div>
+
+    <div class="debug-section">
+        <h3>🔧 Manual Actions</h3>
+        <button onclick="triggerInstall()">Try Install</button>
+        <button onclick="showManualSteps()">Show Manual Steps</button>
+        <button onclick="testServiceWorker()">Test Service Worker</button>
+    </div>
+
+    <script>
+        let deferredPrompt = null;
+        let installEventReceived = false;
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const colorMap = {
+                info: '#87CEEB',
+                success: '#90EE90', 
+                error: '#FFB6C1',
+                warning: '#FFD700'
+            };
+            
+            logElement.innerHTML += `<span style="color: ${colorMap[type]}">[${timestamp}] ${message}</span>\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            
+            console.log(`[PWA Debug] ${message}`);
+        }
+
+        function updateDeviceInfo() {
+            const info = document.getElementById('device-info');
+            const ua = navigator.userAgent;
+            const isIOS = /iPad|iPhone|iPod/.test(ua);
+            const isAndroid = /Android/.test(ua);
+            const isChrome = /Chrome/.test(ua);
+            const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                               window.navigator.standalone === true;
+            
+            info.innerHTML = `
+                <div class="status info">
+                    <strong>User Agent:</strong> ${ua}<br>
+                    <strong>iOS:</strong> ${isIOS ? '✅' : '❌'}<br>
+                    <strong>Android:</strong> ${isAndroid ? '✅' : '❌'}<br>
+                    <strong>Chrome:</strong> ${isChrome ? '✅' : '❌'}<br>
+                    <strong>Safari:</strong> ${isSafari ? '✅' : '❌'}<br>
+                    <strong>Standalone Mode:</strong> ${isStandalone ? '✅ Already installed!' : '❌'}<br>
+                    <strong>Screen:</strong> ${window.screen.width}x${window.screen.height}<br>
+                    <strong>Viewport:</strong> ${window.innerWidth}x${window.innerHeight}
+                </div>
+            `;
+
+            log(`Device detected: iOS=${isIOS}, Android=${isAndroid}, Chrome=${isChrome}, Safari=${isSafari}, Standalone=${isStandalone}`);
+        }
+
+        function checkRequirements() {
+            const check = document.getElementById('requirements-check');
+            let results = [];
+
+            // Check HTTPS
+            const isHTTPS = location.protocol === 'https:' || location.hostname === 'localhost';
+            results.push(`HTTPS: ${isHTTPS ? '✅' : '❌'} (${location.protocol})`);
+
+            // Check manifest
+            fetch('/manifest.json')
+                .then(response => response.json())
+                .then(manifest => {
+                    results.push(`Manifest: ✅ Found (${manifest.name})`);
+                    results.push(`Start URL: ${manifest.start_url}`);
+                    results.push(`Display: ${manifest.display}`);
+                    results.push(`Icons: ${manifest.icons.length} found`);
+                    updateResults();
+                })
+                .catch(error => {
+                    results.push(`Manifest: ❌ Error (${error.message})`);
+                    updateResults();
+                });
+
+            // Check service worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    if (registrations.length > 0) {
+                        results.push(`Service Worker: ✅ Registered (${registrations.length} found)`);
+                        registrations.forEach((reg, i) => {
+                            results.push(`  SW ${i+1}: ${reg.scope} (${reg.active ? 'Active' : 'Installing'})`);
+                        });
+                    } else {
+                        results.push(`Service Worker: ❌ Not registered`);
+                    }
+                    updateResults();
+                });
+            } else {
+                results.push(`Service Worker: ❌ Not supported`);
+                updateResults();
+            }
+
+            function updateResults() {
+                check.innerHTML = `<div class="status info">${results.join('<br>')}</div>`;
+            }
+
+            log('Requirements check initiated');
+        }
+
+        function triggerInstall() {
+            log('Install button clicked');
+            
+            if (deferredPrompt) {
+                log('Using deferred prompt', 'success');
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    log(`Install choice: ${choiceResult.outcome}`, choiceResult.outcome === 'accepted' ? 'success' : 'warning');
+                    deferredPrompt = null;
+                });
+            } else {
+                log('No deferred prompt available', 'warning');
+                showManualSteps();
+            }
+        }
+
+        function showManualSteps() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isAndroid = /Android/.test(navigator.userAgent);
+            
+            let steps = '';
+            if (isIOS) {
+                steps = 'iOS: Tap Share (⬆️) → Add to Home Screen → Add';
+            } else if (isAndroid) {
+                steps = 'Android: Menu (⋮) → Add to Home Screen → Install';
+            } else {
+                steps = 'Desktop: Look for install icon in address bar or browser menu';
+            }
+            
+            alert(`Manual Installation Steps:\n\n${steps}`);
+            log(`Manual steps shown for platform`, 'info');
+        }
+
+        function testServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        log(`Service Worker registered: ${registration.scope}`, 'success');
+                    })
+                    .catch(error => {
+                        log(`Service Worker registration failed: ${error}`, 'error');
+                    });
+            } else {
+                log('Service Workers not supported', 'error');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Event listeners
+        window.addEventListener('beforeinstallprompt', (e) => {
+            log('beforeinstallprompt event received!', 'success');
+            e.preventDefault();
+            deferredPrompt = e;
+            installEventReceived = true;
+            
+            document.getElementById('install-events').innerHTML = `
+                <div class="status success">✅ Install prompt available! Ready to install.</div>
+            `;
+        });
+
+        window.addEventListener('appinstalled', (e) => {
+            log('App installed successfully!', 'success');
+            document.getElementById('install-events').innerHTML = `
+                <div class="status success">✅ App installed! Check your home screen.</div>
+            `;
+        });
+
+        // Initialize
+        log('PWA Debug tool initialized');
+        updateDeviceInfo();
+        checkRequirements();
+
+        // Check for install prompt after delay
+        setTimeout(() => {
+            if (!installEventReceived) {
+                document.getElementById('install-events').innerHTML = `
+                    <div class="status warning">⚠️ No install prompt received yet. Try visiting the main site multiple times.</div>
+                `;
+                log('No install prompt received after 3 seconds', 'warning');
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
