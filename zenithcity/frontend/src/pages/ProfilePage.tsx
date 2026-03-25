@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import { User, Lock, Eye, Award, Swords, Shield, Zap, Save, Settings, Dumbbell, Calendar, Ruler, Weight, HeartPulse, Target } from 'lucide-react';
+import { User, Lock, Eye, Award, Swords, Shield, Zap, Save, Settings, Dumbbell, Calendar, Ruler, Weight, HeartPulse, Target, Watch } from 'lucide-react';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { api } from '../services/api';
@@ -12,6 +12,7 @@ export default function ProfilePage() {
   const { user } = useSelector((s: RootState) => s.auth);
   
   const [username, setUsername] = useState(user?.username || '');
+  const [isWatchConnected, setIsWatchConnected] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(user?.privacy_mode || false);
   const [battleAutoEnroll, setBattleAutoEnroll] = useState(user?.battle_auto_enroll !== false);
   
@@ -29,7 +30,20 @@ export default function ProfilePage() {
   
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { dispatch(fetchProfile()); }, [dispatch]);
+  useEffect(() => { 
+    dispatch(fetchProfile()); 
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('watch_synced')) {
+      if (params.get('watch_synced') === 'error') {
+        dispatch(addToast({ type: 'error', message: 'Failed to sync watch.' }));
+      } else {
+        localStorage.setItem('watch_connected', 'true');
+        setIsWatchConnected(true);
+        dispatch(addToast({ type: 'success', message: 'Smartwatch synced successfully!' }));
+      }
+      window.history.replaceState({}, '', '/profile');
+    }
+  }, [dispatch]);
   
   useEffect(() => {
     if (user) {
@@ -46,8 +60,16 @@ export default function ProfilePage() {
       if (user.target_weight_kg) setTargetWeight(user.target_weight_kg);
       if (user.time_period_weeks) setTimePeriod(user.time_period_weeks);
       if (user.time_per_day_minutes) setTimePerDay(user.time_per_day_minutes);
+      if ((user as any).watch_connected || localStorage.getItem('watch_connected') === 'true') {
+        setIsWatchConnected(true);
+      }
     }
   }, [user]);
+
+  const handleConnectWatch = () => {
+    // Redirect to backend OAuth flow
+    window.location.href = `http://localhost:3001/api/watch/connect`;
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -111,6 +133,23 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between p-4 glass-sm rounded-xl">
             <div className="flex items-center gap-3"><Eye className="w-5 h-5 text-neon-purple" /><div><p className="text-sm font-semibold text-white">Privacy Mode</p><p className="text-xs text-space-500">Anonymous on leaderboards</p></div></div>
             <button onClick={() => setPrivacyMode(!privacyMode)} role="switch" aria-checked={privacyMode} aria-label="Toggle privacy mode" className={`w-12 h-6 rounded-full transition-all relative ${privacyMode ? 'bg-neon-purple' : 'bg-space-700'}`}><div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all ${privacyMode ? 'left-6' : 'left-0.5'}`} /></button>
+          </div>
+          
+          <div className="flex items-center justify-between p-4 glass-sm rounded-xl border border-neon-cyan/20">
+            <div className="flex items-center gap-3">
+              <Watch className="w-5 h-5 text-neon-cyan" />
+              <div>
+                <p className="text-sm font-semibold text-white">Smartwatch Connection</p>
+                <p className="text-xs text-space-500">Google Fit/Health Sync</p>
+              </div>
+            </div>
+            {isWatchConnected ? (
+              <span className="text-xs font-mono font-bold text-neon-green px-3 py-1 bg-neon-green/20 rounded-full border border-neon-green/40">Connected</span>
+            ) : (
+              <button onClick={handleConnectWatch} className="px-3 py-1.5 bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40 rounded-lg text-xs font-bold uppercase hover:bg-neon-cyan/30 transition-colors">
+                Connect
+              </button>
+            )}
           </div>
         </div>
 

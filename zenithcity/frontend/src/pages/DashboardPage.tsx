@@ -3,8 +3,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Dumbbell, Building2, Trophy, Swords, Zap, TrendingUp, Heart, Map, ArrowRight, Flame, Shield, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { Dumbbell, Building2, Trophy, Swords, Zap, TrendingUp, Heart, Map, ArrowRight, Flame, Shield, AlertTriangle, Watch, Activity } from 'lucide-react';
 import { fetchDashboard } from '../store/slices/dashboardSlice';
+import { addToast } from '../store/slices/uiSlice';
+import { api } from '../services/api';
 import { RootState, AppDispatch } from '../store';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
@@ -33,6 +36,25 @@ export default function DashboardPage() {
   const dispatch = useDispatch<AppDispatch>();
   const { data, loading } = useSelector((s: RootState) => s.dashboard);
   const { user } = useSelector((s: RootState) => s.auth);
+  const [syncingWatch, setSyncingWatch] = useState(false);
+
+  const handleSyncWatch = async () => {
+    setSyncingWatch(true);
+    try {
+      const res = await api.get('/watch/sync');
+      if (res.data.success) {
+        dispatch(addToast({ 
+          type: 'success', 
+          message: `Synced ${res.data.data.steps} steps! Earned ${res.data.pointsEarned} pts.` 
+        }));
+        dispatch(fetchDashboard());
+      }
+    } catch (err: any) {
+      dispatch(addToast({ type: 'error', message: err.message || 'Failed to sync watch data' }));
+    } finally {
+      setSyncingWatch(false);
+    }
+  };
 
   useEffect(() => { dispatch(fetchDashboard()); }, [dispatch]);
 
@@ -67,10 +89,27 @@ export default function DashboardPage() {
             {data ? `Rank #${data.leaderboard_rank} • ${data.points_balance?.toLocaleString()} pts` : 'Loading...'}
           </p>
         </div>
-        <Link to="/workout" className="btn-primary flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto" aria-label="Start a new workout">
-          <Dumbbell className="w-4 h-4" aria-hidden="true" />
-          Start Workout
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0">
+          {((user as any)?.watch_connected || localStorage.getItem('watch_connected') === 'true') && (
+            <button 
+              onClick={handleSyncWatch} 
+              disabled={syncingWatch}
+              className="btn-secondary flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto"
+              aria-label="Sync Smartwatch Data"
+            >
+              {syncingWatch ? (
+                <div className="w-4 h-4 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Watch className="w-4 h-4 text-neon-cyan" aria-hidden="true" />
+              )}
+              Sync Watch
+            </button>
+          )}
+          <Link to="/workout" className="btn-primary flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto" aria-label="Start a new workout">
+            <Dumbbell className="w-4 h-4" aria-hidden="true" />
+            Start Workout
+          </Link>
+        </div>
       </motion.div>
 
       {/* City decline warning */}
@@ -265,6 +304,56 @@ export default function DashboardPage() {
                 <p className="text-xs text-space-400">
                   Starts {new Date(battle.starts_at).toLocaleDateString()}
                 </p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Recent Workouts */}
+      {data?.recent_workouts?.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          className="glass p-4 sm:p-6"
+          role="region"
+          aria-label="Recent Workouts"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display font-semibold text-white text-xs sm:text-sm uppercase tracking-widest">Recent Activity</h2>
+          </div>
+          <div className="space-y-3">
+            {data.recent_workouts.map((workout: any) => (
+              <div key={workout.id} className="flex flex-col sm:flex-row sm:items-center justify-between glass-sm p-4 rounded-xl border border-neon-cyan/10 hover:border-neon-cyan/30 transition-all gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-neon-cyan/10 border border-neon-cyan/20 flex items-center justify-center flex-shrink-0">
+                    <Activity className="w-5 h-5 text-neon-cyan" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white capitalize">{workout.exercise_type.replace('_', ' ')}</h3>
+                    <p className="text-xs text-space-400">
+                      {new Date(workout.completed_at).toLocaleDateString()} at {new Date(workout.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4 sm:gap-6 ml-13 sm:ml-0">
+                  <div className="text-left sm:text-right">
+                    <p className="text-[10px] text-space-500 uppercase tracking-wider mb-0.5">Reps</p>
+                    <p className="text-sm font-bold text-white font-mono">{workout.total_reps > 0 ? `${workout.valid_reps}/${workout.total_reps}` : '-'}</p>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <p className="text-[10px] text-space-500 uppercase tracking-wider mb-0.5">Form</p>
+                    <p className="text-sm font-bold text-neon-green font-mono">{workout.form_accuracy ? `${Math.round(workout.form_accuracy * 100)}%` : '-'}</p>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <p className="text-[10px] text-space-500 uppercase tracking-wider mb-0.5">Points</p>
+                    <p className="text-sm font-bold text-neon-yellow flex items-center gap-1 font-mono">
+                      +{workout.points_earned || 0} <Zap className="w-3 h-3" />
+                    </p>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

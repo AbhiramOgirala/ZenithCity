@@ -12,10 +12,10 @@ async function createLiveSession(ai: GoogleGenAI, userId: string, exerciseType: 
         parts: [{
           text: `You are a strict fitness AI coach.
 The user is performing: ${exerciseType}.
-Analyze the stream of images to count reps accurately.
+Analyze the stream of images to evaluate form.
 For every image frame you receive, respond strictly with JSON:
 {
-  "rep_count": number,       // cumulative VALID reps.
+  "rep_completed_this_frame": boolean, // true ONLY on the exact frame a full rep finishes
   "current_phase": "up"|"down"|"transition",
   "form_score": 0.0-1.0,    // quality of current form
   "feedback": "string",     // real-time coaching tip
@@ -23,9 +23,9 @@ For every image frame you receive, respond strictly with JSON:
 }
 
 CRITICAL RULES:
-1. NEVER count a rep unless you visually witness a FULL motion cycle (start, deep bend, return to start).
-2. If the user is just moving their arms randomly or doing partial reps, DO NOT increment rep_count. Give feedback like "Full range of motion needed".
-3. Start tracking rep_count at 0 and ONLY increase it when a verified, full-range rep completes.
+1. "rep_completed_this_frame" must ONLY be true once per full motion cycle (when they return to the start position).
+2. NEVER set it to true if they just move their arms randomly or do partial reps. Give feedback like "Full range of motion".
+3. If they perform an incorrect exercise altogether, give feedback but keep "rep_completed_this_frame: false".
 4. Keep feedback brief (1-3 words) to prevent lag.`
         }]
       }

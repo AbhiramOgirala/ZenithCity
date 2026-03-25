@@ -433,15 +433,14 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       setIsGeminiActive(true);
       if (!activeRef.current) return;
 
-      // Gemini is the source of truth for rep count
-      const newTotal = Math.max(statsRef.current.totalReps, data.rep_count);
-      const diff = newTotal - statsRef.current.totalReps;
-      
-      if (diff > 0) {
-        statsRef.current.totalReps = newTotal;
+      // Gemini is the source of truth for rep form checks
+      if (data.rep_completed_this_frame) {
+        // Increment total reps natively in the browser only when AI says a rep finished
+        statsRef.current.totalReps += 1;
+        
         // Count valid only if form is good OR gemini says it is valid
         if (data.is_valid_form || data.form_score >= 0.85) {
-            statsRef.current.validReps += diff;
+            statsRef.current.validReps += 1;
             setRepFlash(true);
             setTimeout(() => setRepFlash(false), 400);
         }

@@ -199,6 +199,26 @@ router.get('/history', authMiddleware, async (req: AuthRequest, res: Response): 
   }
 });
 
+// GET /api/workouts/history
+// Returns all completed workouts for the user
+router.get('/history', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    
+    const { data: history } = await supabase
+      .from('workout_sessions')
+      .select('*')
+      .eq('user_id', req.user!.id)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false })
+      .limit(limit);
+
+    res.json(history || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch workout history' });
+  }
+});
+
 // GET /api/workouts/:id
 router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
