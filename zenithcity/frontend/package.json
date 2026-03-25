@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pwa:icons": "node generate-pwa-icons.cjs",
+    "pwa:test": "echo 'Open DevTools → Application → Manifest to test PWA'"
   },
   "dependencies": {
     "@react-three/drei": "^9.99.0",
