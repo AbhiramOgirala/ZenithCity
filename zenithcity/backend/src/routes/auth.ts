@@ -113,7 +113,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
         target_weight_kg: target_weight_kg ? parseFloat(target_weight_kg) : null,
         time_period_weeks: time_period_weeks ? parseInt(time_period_weeks) : null,
         time_per_day_minutes: time_per_day_minutes ? parseInt(time_per_day_minutes) : null,
-        onboarding_completed: true // True because they are onboarding during registration
+        onboarding_completed: false // Redirects new users to the interactive onboarding page
       })
       .select()
       .single();
