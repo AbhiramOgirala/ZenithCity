@@ -12,7 +12,7 @@ export function connectSocket(userId: string): Socket {
     transports: ['websocket', 'polling'],
   });
 
-  socket.on('connect', () => console.log('Socket connected'));
+  socket.on('connect', () => console.log('Socket connected to:', socketUrl));
   socket.on('disconnect', () => console.log('Socket disconnected'));
 
   return socket;

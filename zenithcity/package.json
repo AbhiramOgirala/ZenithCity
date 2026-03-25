@@ -9,7 +9,13 @@
     "docker:build:backend": "cd backend && docker build -t zenithcity-backend .",
     "docker:build:frontend": "cd frontend && docker build -t zenithcity-frontend .",
     "docker:up": "docker-compose up -d",
+    "docker:up:prod": "docker-compose -f docker-compose.prod.yml up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:logs": "docker-compose logs -f",
+    "mobile:setup": "node mobile-test.js",
+    "mobile:dev": "cp frontend/.env.mobile frontend/.env && npm run dev",
+    "prod:test": "node test-production.js",
+    "prod:build": "cp frontend/.env.production frontend/.env && npm run build",
+    "deploy": "git add . && git commit -m 'Deploy to production' && git push origin main"
   }
 }
