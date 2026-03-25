@@ -6,7 +6,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "docker:build": "npm run build && docker build -t zenithcity-backend .",
-    "docker:run": "docker run -p 3001:3001 zenithcity-backend"
+    "docker:run": "docker run -p 3001:3001 zenithcity-backend",
+    "verify": "node verify-build.js",
+    "build:verify": "npm run build && npm run verify"
   },
   "dependencies": {
     "@google/genai": "^1.46.0",

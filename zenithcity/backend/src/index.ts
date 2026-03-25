@@ -27,11 +27,23 @@ const app = express();
 const httpServer = createServer(app);
 
 // Socket.io setup
+const socketOrigins = process.env.NODE_ENV === 'production'
+  ? [
+      'https://zenith-city.vercel.app',
+      ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+      /\.vercel\.app$/,
+      /\.netlify\.app$/
+    ]
+  : [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      /^http:\/\/192\.168\.\d+\.\d+:5173$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:5173$/
+    ];
+
 const io = new SocketServer(httpServer, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? ['https://zenith-city.vercel.app', process.env.FRONTEND_URL, /\.vercel\.app$/, /\.netlify\.app$/]
-      : ['http://localhost:5173', 'http://127.0.0.1:5173', /^http:\/\/192\.168\.\d+\.\d+:5173$/, /^http:\/\/10\.\d+\.\d+\.\d+:5173$/],
+    origin: socketOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -42,10 +54,23 @@ setSocketInstance(io);
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
+
+const allowedOrigins = process.env.NODE_ENV === 'production' 
+  ? [
+      'https://zenith-city.vercel.app',
+      ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+      /\.vercel\.app$/,
+      /\.netlify\.app$/
+    ]
+  : [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      /^http:\/\/192\.168\.\d+\.\d+:5173$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:5173$/
+    ];
+
 app.use(cors({ 
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://zenith-city.vercel.app', process.env.FRONTEND_URL, /\.vercel\.app$/, /\.netlify\.app$/]
-    : ['http://localhost:5173', 'http://127.0.0.1:5173', /^http:\/\/192\.168\.\d+\.\d+:5173$/, /^http:\/\/10\.\d+\.\d+\.\d+:5173$/], 
+  origin: allowedOrigins,
   credentials: true 
 }));
 app.use(express.json({ limit: '10mb' }));

@@ -23,7 +23,7 @@ npm run docker:down
 ### Backend Only
 ```bash
 cd backend
-npm run build  # First compile TypeScript
+npm run build:verify  # Build and verify TypeScript compilation
 docker build -t zenithcity-backend .
 ```
 
@@ -40,8 +40,13 @@ docker build -t zenithcity-frontend .
 If you get TypeScript errors during Docker build:
 ```bash
 cd backend
-npm run build  # Check for TS errors locally first
+npm run build:verify  # Check for TS errors locally first
 ```
+
+### Common TypeScript Issues Fixed:
+- ✅ CORS origin array type issues (undefined values)
+- ✅ Socket.io CORS configuration type safety
+- ✅ Environment variable handling
 
 ### "dist not found" Error
 This happens when the TypeScript code hasn't been compiled. The Docker build now handles this automatically.
@@ -59,6 +64,29 @@ Copy `.env.example` to `.env` in both backend and root directories and fill in y
 Test the backend build locally:
 ```bash
 cd backend
-npm run build
-node test-build.js
+npm run build:verify
 ```
+
+## Production Deployment
+
+### Render (Backend)
+The backend is configured to build automatically on Render with:
+- Build Command: `npm install && npm run build`
+- Start Command: `npm start`
+
+### Vercel (Frontend)  
+The frontend builds automatically on Vercel with the `vercel.json` configuration.
+
+## Docker Build Performance
+
+The multi-stage Dockerfile optimizes build time by:
+1. Installing dependencies in builder stage
+2. Compiling TypeScript in builder stage  
+3. Creating minimal production image with only compiled code
+4. Using Alpine Linux for smaller image size
+
+## Health Checks
+
+Both Docker containers include health checks:
+- Backend: `GET /health` endpoint
+- Frontend: Nginx status check
