@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quick Icon Fix</title>
+    <style>
+        body { font-family: Arial; padding: 40px; background: #111; color: #fff; text-align: center; }
+        button { padding: 20px 40px; background: #00F5FF; color: #000; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin: 20px; }
+        button:hover { opacity: 0.8; }
+        .status { margin: 20px; padding: 15px; background: #222; border-radius: 8px; }
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Quick Icon Fix</h1>
+    <p>This will create a 512x512 icon instantly</p>
+    
+    <button onclick="createAndDownload()">📥 Create & Download icon-512.png</button>
+    
+    <div class="status" id="status">Click the button above</div>
+    
+    <canvas id="canvas" width="512" height="512"></canvas>
+
+    <script>
+        function createAndDownload() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            const center = size / 2;
+            
+            // Background
+            ctx.fillStyle = '#020614';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Outer glow
+            const outerGlow = ctx.createRadialGradient(center, center, 0, center, center, size * 0.5);
+            outerGlow.addColorStop(0, 'rgba(0, 245, 255, 0.3)');
+            outerGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = outerGlow;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Main circle
+            const gradient = ctx.createRadialGradient(center, center, 0, center, center, size * 0.35);
+            gradient.addColorStop(0, '#00F5FF');
+            gradient.addColorStop(1, '#0088FF');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(center, center, size * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner circle
+            ctx.fillStyle = '#020614';
+            ctx.beginPath();
+            ctx.arc(center, center, size * 0.28, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Letter Z
+            ctx.fillStyle = '#00F5FF';
+            ctx.font = 'bold ' + (size * 0.35) + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Z', center, center);
+            
+            // Download
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.download = 'icon-512.png';
+                link.href = url;
+                link.click();
+                
+                document.getElementById('status').innerHTML = 
+                    '✅ Downloaded!<br><br>' +
+                    '<strong>Next steps:</strong><br>' +
+                    '1. Save as <code>icon-512.png</code><br>' +
+                    '2. Move to <code>public/icons/</code> folder<br>' +
+                    '3. Run: <code>npm run build</code><br>' +
+                    '4. Deploy to Vercel<br>' +
+                    '5. Test installation';
+            });
+        }
+    </script>
+</body>
+</html>
