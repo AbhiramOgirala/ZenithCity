@@ -190,8 +190,8 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
     res.json({
       user: { 
-        id: user.id, email: user.email, username: user.username, 
-        onboarding_completed: user.onboarding_completed || false 
+        id: user[0].id, email: user[0].email, username: user[0].username, 
+        onboarding_completed: user[0].onboarding_completed || false 
       },
       token,
     });
