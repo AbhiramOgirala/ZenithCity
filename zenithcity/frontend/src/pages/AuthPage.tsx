@@ -5,8 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Eye, EyeOff, Mail, Lock, User, ArrowRight, Building2, Sparkles, Scale, Ruler, Calendar, HeartPulse, Target, Dumbbell, ArrowLeft, Wind } from 'lucide-react';
 import { login, register, clearError } from '../store/slices/authSlice';
 import { RootState, AppDispatch } from '../store';
-import PWAInstallBanner from '../components/ui/PWAInstallBanner';
-import SimpleInstallButton from '../components/ui/SimpleInstallButton';
 
 const GOALS = [
   { id: 'weight_loss', label: 'Weight Loss', icon: Target, emoji: '🔥', desc: 'Burn calories and shed fat', color: 'neon-orange' },
@@ -214,12 +212,6 @@ export default function AuthPage() {
           </form>
         </motion.div>
       </div>
-
-      {/* PWA Install Banner */}
-      <PWAInstallBanner />
-      
-      {/* Simple Install Button */}
-      <SimpleInstallButton />
     </div>
   );
 }

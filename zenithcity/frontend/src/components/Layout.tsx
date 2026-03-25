@@ -7,7 +7,6 @@ import { logout, refreshBalance, fetchProfile } from '../store/slices/authSlice'
 import { toggleSidebar } from '../store/slices/uiSlice';
 import { useState, useEffect } from 'react';
 import { requestNotificationPermission, scheduleWorkoutReminder } from '../utils/notifications';
-import SimpleInstallButton from './ui/SimpleInstallButton';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -83,9 +82,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-
-      {/* PWA Install Button */}
-      <SimpleInstallButton />
 
       {/* Mobile sidebar overlay */}
       <AnimatePresence>
@@ -298,12 +294,45 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <button
                   onClick={() => {
                     setShowMobileMenu(false);
+                    navigate('/workout-plan');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white hover:bg-white/5 transition-all"
+                >
+                  <ClipboardList className="w-5 h-5 text-neon-cyan" />
+                  <span className="font-body text-sm font-medium">Workout Plan</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/nutrition');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white hover:bg-white/5 transition-all"
+                >
+                  <Apple className="w-5 h-5 text-neon-cyan" />
+                  <span className="font-body text-sm font-medium">Diet Plan / Nutrition</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/battles');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white hover:bg-white/5 transition-all"
+                >
+                  <Swords className="w-5 h-5 text-neon-cyan" />
+                  <span className="font-body text-sm font-medium">Battles</span>
+                </button>
+
+                <div className="w-full h-px bg-white/5 my-2" />
+                
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
                     navigate('/profile');
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white hover:bg-white/5 transition-all"
                 >
-                  <User className="w-5 h-5 text-neon-cyan" />
-                  <span className="font-body text-sm font-medium">Profile</span>
+                  <User className="w-5 h-5 text-space-400" />
+                  <span className="font-body text-sm font-medium text-space-300">Profile</span>
                 </button>
                 
                 <button
