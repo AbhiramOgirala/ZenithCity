@@ -238,6 +238,11 @@
     transform: scale(0.92);
   }
 
+  /* Safe area padding for mobile modals */
+  .safe-area-bottom {
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+  }
+
   /* PWA Install Banner */
   .pwa-install-banner {
     @apply fixed bottom-20 left-4 right-4 lg:bottom-4 z-40;

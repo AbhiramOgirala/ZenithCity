@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create 512x512 Icon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #020614;
+            color: #fff;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        canvas {
+            border: 2px solid #00F5FF;
+            margin: 20px 0;
+            display: none;
+        }
+        button {
+            padding: 15px 30px;
+            background: #00F5FF;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover { opacity: 0.8; }
+        .preview {
+            margin: 20px 0;
+        }
+        .preview img {
+            border: 2px solid #00F5FF;
+            border-radius: 8px;
+        }
+        .instructions {
+            background: #111;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: left;
+            margin: 20px 0;
+        }
+        .success {
+            background: #0f4;
+            color: #000;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Create 512x512 Icon</h1>
+        
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ol>
+                <li>Click "Load 192px Icon" to load the existing icon</li>
+                <li>Click "Generate 512px Icon" to create the larger version</li>
+                <li>Click "Download" to save as icon-512.png</li>
+                <li>Place it in <code>public/icons/</code> folder</li>
+            </ol>
+        </div>
+
+        <button onclick="loadImage()">📂 Load 192px Icon</button>
+        
+        <div class="preview" id="preview" style="display:none;">
+            <h3>Preview:</h3>
+            <img id="previewImg" width="192" height="192" />
+        </div>
+
+        <button id="generateBtn" onclick="generateIcon()" style="display:none;">
+            ✨ Generate 512px Icon
+        </button>
+        
+        <button id="downloadBtn" onclick="downloadIcon()" style="display:none;">
+            📥 Download icon-512.png
+        </button>
+
+        <div class="success" id="success">
+            ✅ Icon generated successfully! Click download to save.
+        </div>
+
+        <canvas id="canvas" width="512" height="512"></canvas>
+        <input type="file" id="fileInput" accept="image/*" style="display:none;" />
+    </div>
+
+    <script>
+        let sourceImage = null;
+
+        function loadImage() {
+            const input = document.getElementById('fileInput');
+            input.click();
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        sourceImage = img;
+                        document.getElementById('previewImg').src = event.target.result;
+                        document.getElementById('preview').style.display = 'block';
+                        document.getElementById('generateBtn').style.display = 'inline-block';
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+        }
+
+        function generateIcon() {
+            if (!sourceImage) {
+                alert('Please load an image first!');
+                return;
+            }
+
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, 512, 512);
+            
+            // Draw scaled image
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(sourceImage, 0, 0, 512, 512);
+            
+            // Show success and download button
+            document.getElementById('success').style.display = 'block';
+            document.getElementById('downloadBtn').style.display = 'inline-block';
+        }
+
+        function downloadIcon() {
+            const canvas = document.getElementById('canvas');
+            const link = document.createElement('a');
+            link.download = 'icon-512.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            alert('✅ Icon downloaded! Save it to public/icons/icon-512.png');
+        }
+    </script>
+</body>
+</html>

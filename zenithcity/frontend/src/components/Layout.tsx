@@ -281,7 +281,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50 flex items-end lg:hidden"
+            className="fixed inset-0 bg-black/60 z-[60] flex items-end lg:hidden"
             onClick={() => setShowMobileMenu(false)}
           >
             <motion.div
@@ -289,7 +289,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="w-full bg-space-900 border-t border-space-700 rounded-t-3xl p-6 pb-8"
+              className="w-full bg-space-900 border-t border-space-700 rounded-t-3xl p-6 pb-8 safe-area-bottom"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="w-12 h-1 bg-space-700 rounded-full mx-auto mb-6" />

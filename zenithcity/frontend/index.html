@@ -8,14 +8,12 @@
     <meta name="description" content="Transform workouts into empires. AI-verified fitness with city building." />
 
     <!-- PWA Meta Tags -->
-    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#00F5FF" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ZenithCity" />
     <meta name="application-name" content="ZenithCity" />
-    <meta name="msapplication-TileColor" content="#020614" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
 
@@ -27,37 +25,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Register Service Worker for PWA
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-              console.log('✅ SW registered:', reg.scope);
-              
-              // Check for updates
-              reg.addEventListener('updatefound', () => {
-                console.log('🔄 SW update found');
-              });
-            })
-            .catch(err => console.warn('SW registration failed:', err));
-        });
-      }
-
-      // PWA Install Detection
-      let deferredPrompt;
-      window.addEventListener('beforeinstallprompt', (e) => {
-        console.log('💾 PWA install prompt available');
-        e.preventDefault();
-        deferredPrompt = e;
-      });
-
-      // Log PWA status
-      if (window.matchMedia('(display-mode: standalone)').matches) {
-        console.log('📱 Running as PWA');
-      } else {
-        console.log('🌐 Running in browser');
-      }
-    </script>
   </body>
 </html>
