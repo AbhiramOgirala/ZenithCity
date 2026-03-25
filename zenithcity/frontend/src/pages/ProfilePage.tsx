@@ -66,9 +66,15 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  const handleConnectWatch = () => {
-    // Redirect to backend OAuth flow
-    window.location.href = `http://localhost:3001/api/watch/connect`;
+  const handleConnectWatch = async () => {
+    try {
+      const data = await api.get('/watch/connect');
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch (err: any) {
+      dispatch(addToast({ type: 'error', message: err.message || 'Failed to connect to Strava' }));
+    }
   };
 
   const handleSave = async () => {
@@ -139,8 +145,8 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3">
               <Watch className="w-5 h-5 text-neon-cyan" />
               <div>
-                <p className="text-sm font-semibold text-white">Smartwatch Connection</p>
-                <p className="text-xs text-space-500">Google Fit/Health Sync</p>
+                <p className="text-sm font-semibold text-white">Strava Connection</p>
+                <p className="text-xs text-space-500">Sync workouts via Strava</p>
               </div>
             </div>
             {isWatchConnected ? (
