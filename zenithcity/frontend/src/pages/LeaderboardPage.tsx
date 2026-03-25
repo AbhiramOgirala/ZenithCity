@@ -25,22 +25,24 @@ export default function LeaderboardPage() {
   const rest = entries.slice(3);
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-display font-bold text-white">Leaderboard</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold text-white">Leaderboard</h1>
           <p className="text-space-400 text-sm mt-0.5">Your rank: <span className="text-neon-cyan font-mono font-bold">#{viewer_rank}</span></p>
         </div>
         <Trophy className="w-8 h-8 text-neon-yellow" />
       </div>
 
       {/* Type tabs */}
-      <div className="glass-sm p-1 rounded-xl flex w-fit">
+      <div className="glass-sm p-1 rounded-xl flex w-full sm:w-fit overflow-x-auto" role="tablist" aria-label="Leaderboard time period">
         {TABS.map(tab => (
           <button
             key={tab}
             onClick={() => dispatch(setType(tab))}
-            className={`px-4 py-2 text-xs font-display font-semibold tracking-widest uppercase rounded-lg transition-all ${
+            role="tab"
+            aria-selected={current_type === tab}
+            className={`px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-display font-semibold tracking-widest uppercase rounded-lg transition-all whitespace-nowrap ${
               current_type === tab
                 ? 'bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/30'
                 : 'text-space-400 hover:text-white'
@@ -55,14 +57,14 @@ export default function LeaderboardPage() {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass border border-neon-cyan/20 p-4 flex items-center gap-4"
+        className="glass border border-neon-cyan/20 p-3 sm:p-4 flex items-center gap-3 sm:gap-4"
       >
         <div className="w-12 h-12 rounded-xl bg-neon-cyan/10 border border-neon-cyan/30 flex items-center justify-center">
           <Trophy className="w-6 h-6 text-neon-cyan" />
         </div>
         <div className="flex-1">
           <p className="text-sm text-space-400 font-mono">Your Position</p>
-          <p className="text-2xl font-display font-black text-neon-cyan">#{viewer_rank}</p>
+          <p className="text-xl sm:text-2xl font-display font-black text-neon-cyan">#{viewer_rank}</p>
         </div>
         <div className="text-right">
           <p className="text-xs text-space-400 font-mono">Points</p>
@@ -78,7 +80,7 @@ export default function LeaderboardPage() {
         <>
           {/* Podium */}
           {top3.length >= 3 && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {[top3[1], top3[0], top3[2]].map((entry, idx) => {
                 const realIdx = idx === 0 ? 1 : idx === 1 ? 0 : 2;
                 const style = podiumColors[realIdx];
@@ -105,8 +107,8 @@ export default function LeaderboardPage() {
           )}
 
           {/* Full list */}
-          <div className="glass">
-            <div className="grid grid-cols-[40px_1fr_auto] gap-2 px-4 py-2 border-b border-white/5">
+          <div className="glass" role="table" aria-label="Full leaderboard rankings">
+            <div className="grid grid-cols-[32px_1fr_auto] sm:grid-cols-[40px_1fr_auto] gap-2 px-3 sm:px-4 py-2 border-b border-white/5" role="row">
               <p className="text-xs font-mono text-space-500 uppercase">#</p>
               <p className="text-xs font-mono text-space-500 uppercase">Player</p>
               <p className="text-xs font-mono text-space-500 uppercase">Points</p>
@@ -120,7 +122,7 @@ export default function LeaderboardPage() {
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.02 }}
-                    className={`grid grid-cols-[40px_1fr_auto] gap-2 px-4 py-3 items-center transition-all ${
+                    className={`grid grid-cols-[32px_1fr_auto] sm:grid-cols-[40px_1fr_auto] gap-2 px-3 sm:px-4 py-2.5 sm:py-3 items-center transition-all ${
                       isMe ? 'bg-neon-cyan/5 border-l-2 border-neon-cyan' : 'hover:bg-white/3'
                     }`}
                   >

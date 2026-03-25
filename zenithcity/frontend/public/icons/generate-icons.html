@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon Generator</title></head>
+<body>
+<p>Open browser console to download icons. This is a helper file.</p>
+<script>
+const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+sizes.forEach(size => {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  // Background
+  const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  grad.addColorStop(0, '#0A0E27');
+  grad.addColorStop(1, '#020614');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+  ctx.fill();
+  
+  // Zap icon
+  ctx.fillStyle = '#00F5FF';
+  ctx.shadowColor = '#00F5FF';
+  ctx.shadowBlur = size * 0.08;
+  const s = size * 0.18;
+  const cx = size/2;
+  const cy = size/2;
+  ctx.beginPath();
+  ctx.moveTo(cx - s*0.3, cy - s);
+  ctx.lineTo(cx + s*0.5, cy - s);
+  ctx.lineTo(cx, cy - s*0.1);
+  ctx.lineTo(cx + s*0.3, cy - s*0.1);
+  ctx.lineTo(cx - s*0.5, cy + s);
+  ctx.lineTo(cx, cy + s*0.1);
+  ctx.lineTo(cx - s*0.3, cy + s*0.1);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Z text
+  ctx.shadowBlur = size * 0.04;
+  ctx.font = `bold ${size * 0.28}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Z', cx, cy);
+  
+  const a = document.createElement('a');
+  a.download = `icon-${size}x${size}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+</script>
+</body>
+</html>

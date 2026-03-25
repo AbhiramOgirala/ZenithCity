@@ -152,7 +152,7 @@ export default function AuthPage() {
   );
 
   return (
-    <div className="min-h-screen page-bg flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen page-bg flex items-center justify-center p-4 relative overflow-hidden" role="main">
       {particles.map(p => (
         <motion.div key={p.id} className="absolute rounded-full bg-neon-cyan/20" style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size }} animate={{ y: [0, -30, 0], opacity: [0.2, 0.8, 0.2] }} transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }} />
       ))}
@@ -160,24 +160,24 @@ export default function AuthPage() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-neon-purple/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
-          <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-neon-cyan/20 to-space-600/20 border border-neon-cyan/30 flex items-center justify-center" style={{ boxShadow: '0 0 30px rgba(0,245,255,0.2)' }}>
-            <Building2 className="w-10 h-10 text-neon-cyan" />
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6 sm:mb-8">
+          <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-neon-cyan/20 to-space-600/20 border border-neon-cyan/30 flex items-center justify-center" style={{ boxShadow: '0 0 30px rgba(0,245,255,0.2)' }}>
+            <Building2 className="w-8 h-8 sm:w-10 sm:h-10 text-neon-cyan" aria-hidden="true" />
           </motion.div>
-          <h1 className="font-display font-black text-3xl text-gradient-cyan tracking-wide uppercase">ZENITHCITY</h1>
+          <h1 className="font-display font-black text-2xl sm:text-3xl text-gradient-cyan tracking-wide uppercase">ZENITHCITY</h1>
           <p className="text-space-400 text-sm mt-1 font-body">Transform workouts into empires</p>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass cyber-border p-8">
-          <div className="flex glass-sm p-1 rounded-xl mb-8">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass cyber-border p-6 sm:p-8">
+          <div className="flex glass-sm p-1 rounded-xl mb-6 sm:mb-8" role="tablist" aria-label="Authentication mode">
             {(['login', 'register'] as const).map(m => (
-              <button key={m} onClick={() => { setMode(m); dispatch(clearError()); setRegStep(1); }} className={`flex-1 py-2.5 text-xs font-display font-semibold tracking-wider uppercase rounded-lg transition-all duration-200 ${mode === m ? 'bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/30' : 'text-space-400 hover:text-white'}`}>
+              <button key={m} onClick={() => { setMode(m); dispatch(clearError()); setRegStep(1); }} role="tab" aria-selected={mode === m} className={`flex-1 py-2.5 text-xs font-display font-semibold tracking-wider uppercase rounded-lg transition-all duration-200 ${mode === m ? 'bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/30' : 'text-space-400 hover:text-white'}`}>
                 {m === 'login' ? 'Sign In' : 'Create Account'}
               </button>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <AnimatePresence mode="wait">
               {mode === 'login' ? (
                 <motion.div key="login" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">

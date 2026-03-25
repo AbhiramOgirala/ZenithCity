@@ -2,6 +2,14 @@
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    screens: {
+      'xs': '480px',
+      'sm': '640px',
+      'md': '768px',
+      'lg': '1024px',
+      'xl': '1280px',
+      '2xl': '1536px',
+    },
     extend: {
       colors: {
         space: {
@@ -11,6 +19,8 @@ export default {
           700: '#2D3561',
           600: '#4A5899',
           500: '#6B7FD7',
+          400: '#8B9DF4',
+          300: '#ABBEF9',
         },
         neon: {
           cyan: '#00F5FF',

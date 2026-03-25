@@ -42,10 +42,10 @@ export default function BattlesPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-display font-bold text-white">Territory Battles</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold text-white">Territory Battles</h1>
           <p className="text-space-400 text-sm mt-0.5">Compete for territory — top 10% win expansion rewards</p>
         </div>
         <Swords className="w-8 h-8 text-neon-purple" />
@@ -53,7 +53,7 @@ export default function BattlesPage() {
 
       {/* Info card */}
       <div className="glass border border-neon-purple/20 p-5">
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-3 gap-3 sm:gap-4">
           {[
             { icon: Swords, label: 'Weekly battles', desc: 'Compete every week', color: 'text-neon-purple' },
             { icon: Trophy, label: 'Top 10% wins', desc: 'Bonus territory rewards', color: 'text-neon-yellow' },
@@ -97,7 +97,7 @@ export default function BattlesPage() {
                   <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-neon-purple to-transparent" />
                 )}
 
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
                   <div className="flex items-center gap-4">
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${
                       isActive ? 'bg-neon-purple/20 border border-neon-purple/40' : 'bg-space-700/50 border border-space-600/30'
@@ -111,9 +111,9 @@ export default function BattlesPage() {
                             LIVE
                           </span>
                         )}
-                        <h3 className="font-display font-bold text-white text-lg">{battle.name}</h3>
+                        <h3 className="font-display font-bold text-white text-base sm:text-lg">{battle.name}</h3>
                       </div>
-                      <div className="flex items-center gap-4 text-sm text-space-400">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-space-400">
                         <span className="flex items-center gap-1.5">
                           <Users className="w-3.5 h-3.5" />
                           {battle.participant_count} participants
@@ -127,7 +127,7 @@ export default function BattlesPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-row sm:flex-col items-center sm:items-end gap-2">
                     {battle.is_enrolled ? (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-green/10 border border-neon-green/30 rounded-lg text-neon-green text-xs font-semibold">
                         <CheckCircle className="w-3.5 h-3.5" />
