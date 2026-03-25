@@ -356,7 +356,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-4 sm:gap-6 ml-13 sm:ml-0">
+                <div className="flex flex-wrap items-center gap-4 sm:gap-6 ml-12 sm:ml-0 mt-2 sm:mt-0 justify-between sm:justify-end w-full sm:w-auto">
                   <div className="text-left sm:text-right">
                     <p className="text-[10px] text-space-500 uppercase tracking-wider mb-0.5">Reps</p>
                     <p className="text-sm font-bold text-white font-mono">{workout.total_reps > 0 ? `${workout.valid_reps}/${workout.total_reps}` : '-'}</p>

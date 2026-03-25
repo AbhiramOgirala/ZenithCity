@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Calendar, Dumbbell, Clock, Target, Zap,
-  ChevronDown, ChevronUp, Play, RefreshCw, Trophy,
+  Play, RefreshCw, Trophy,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
@@ -52,7 +52,6 @@ export default function WorkoutPlanPage() {
   const navigate = useNavigate();
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
 
@@ -60,12 +59,6 @@ export default function WorkoutPlanPage() {
     try {
       const data = await api.get(`/workout-plan${forceRefresh ? '?force=true' : ''}`);
       setPlan(data);
-      if (!expandedDay) {
-        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-        const todayDay = data.plan.find((d: PlanDay) => d.day === today);
-        if (todayDay) setExpandedDay(today);
-        else if (data.plan.length > 0) setExpandedDay(data.plan[0].day);
-      }
     } catch (err) {
       console.error('Failed to fetch plan:', err);
     } finally {
@@ -168,9 +161,8 @@ export default function WorkoutPlanPage() {
       </motion.div>
 
       {/* Daily plans */}
-      <div className="space-y-3">
+      <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 touch-scroll scrollbar-hide">
         {plan.plan.map((day, i) => {
-          const isExpanded = expandedDay === day.day;
           const isToday = day.day === today;
           const color = DAY_COLORS[day.day] || 'neon-cyan';
 
@@ -180,99 +172,73 @@ export default function WorkoutPlanPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className={`glass overflow-hidden ${isToday ? `border border-${color}/30 ring-1 ring-${color}/20` : ''}`}
+              className={`glass flex flex-col min-w-[85vw] sm:min-w-[340px] snap-center flex-shrink-0 ${isToday ? `border border-${color}/40 ring-1 ring-${color}/20 bg-space-800/60` : 'bg-space-900/40'}`}
             >
-              <button
-                onClick={() => setExpandedDay(isExpanded ? null : day.day)}
-                className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-white/3 transition-colors"
-                aria-expanded={isExpanded}
-                aria-controls={`day-${day.day}`}
-              >
+              <div className="p-4 border-b border-white/5 bg-space-800/30">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    isToday ? `bg-${color}/15 border border-${color}/30` : 'bg-space-800 border border-space-700'
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    isToday ? `bg-${color}/20 text-${color}` : 'bg-space-800 border border-space-700 text-space-400'
                   }`}>
-                    <Calendar className={`w-4 h-4 ${isToday ? `text-${color}` : 'text-space-400'}`} />
+                    <Calendar className="w-5 h-5" />
                   </div>
-                  <div className="text-left">
-                    <p className={`font-display font-bold text-sm ${isToday ? `text-${color}` : 'text-white'}`}>
+                  <div>
+                    <h3 className={`font-display font-bold text-lg ${isToday ? `text-${color}` : 'text-white'}`}>
                       {day.day}
                       {isToday && (
-                        <span className="ml-2 text-xs font-mono bg-neon-cyan/10 text-neon-cyan px-2 py-0.5 rounded-full">
+                        <span className="ml-2 text-[10px] font-mono bg-neon-cyan/20 text-neon-cyan px-2 py-0.5 rounded-full align-middle">
                           TODAY
                         </span>
                       )}
-                    </p>
-                    <p className="text-xs text-space-500">{day.focus} &bull; {day.exercises.length} exercises</p>
+                    </h3>
+                    <p className="text-xs text-space-400 mt-0.5">{day.focus} &bull; {day.exercises.length} exercises</p>
                   </div>
                 </div>
-                {isExpanded
-                  ? <ChevronUp className="w-4 h-4 text-space-400" />
-                  : <ChevronDown className="w-4 h-4 text-space-400" />
-                }
-              </button>
+              </div>
 
-              <AnimatePresence>
-                {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="border-t border-white/5"
+              <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+                <p className="text-[10px] text-space-500 font-mono uppercase tracking-widest mb-1">Workout Regimen</p>
+                {day.exercises.map((ex, j) => (
+                  <button
+                    key={j}
+                    onClick={() => handleExerciseClick(ex.type)}
+                    className="w-full flex items-center gap-3 p-3 glass-sm rounded-xl border border-transparent hover:border-neon-cyan/30 hover:bg-neon-cyan/5 transition-all text-left group"
                   >
-                    <div className="p-4 space-y-3">
-                      <p className="text-xs text-space-500 font-mono">Tap an exercise to start it</p>
-
-                      {day.exercises.map((ex, j) => (
-                        <motion.button
-                          key={j}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: j * 0.05 }}
-                          onClick={() => handleExerciseClick(ex.type)}
-                          className="w-full flex items-center gap-3 p-3 glass-sm rounded-xl border border-transparent hover:border-neon-cyan/30 hover:bg-neon-cyan/5 transition-all text-left group"
-                        >
-                          <span className="text-2xl flex-shrink-0 w-10 text-center">
-                            {EXERCISE_EMOJIS[ex.type] || '🏋️'}
+                    <span className="text-2xl flex-shrink-0 w-10 text-center">
+                      {EXERCISE_EMOJIS[ex.type] || '🏋️'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white group-hover:text-neon-cyan transition-colors truncate">
+                        {ex.name}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-space-400 font-mono">
+                        {ex.duration_seconds ? (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-neon-cyan" /> {formatDuration(ex.duration_seconds)}
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white group-hover:text-neon-cyan transition-colors">
-                              {ex.name}
-                            </p>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-space-400 font-mono">
-                              {ex.duration_seconds ? (
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> {formatDuration(ex.duration_seconds)}
-                                </span>
-                              ) : (
-                                <span>{ex.sets} x {ex.reps} reps</span>
-                              )}
-                              {ex.rest_seconds > 0 && (
-                                <span className="text-space-500">{ex.rest_seconds}s rest</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-space-500 mt-1">{ex.notes}</p>
-                          </div>
-                          <Play className="w-4 h-4 text-space-600 group-hover:text-neon-cyan transition-colors flex-shrink-0" />
-                        </motion.button>
-                      ))}
-
-                      {isToday && (() => {
-                        const firstEx = day.exercises[0];
-                        return (
-                          <Link
-                            to={`/workout?exercise=${firstEx?.type || 'squat'}`}
-                            className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-2 shadow-lg shadow-neon-cyan/10"
-                          >
-                            <Dumbbell className="w-4 h-4" /> Start Today's Plan
-                          </Link>
-                        );
-                      })()}
+                        ) : (
+                          <span className="text-neon-orange">{ex.sets} x {ex.reps} reps</span>
+                        )}
+                        {ex.rest_seconds > 0 && (
+                          <span className="text-space-500">{ex.rest_seconds}s rest</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-space-500 mt-1 leading-tight">{ex.notes}</p>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    <Play className="w-4 h-4 text-space-600 group-hover:text-neon-cyan transition-colors flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+
+              {isToday && day.exercises.length > 0 && (
+                <div className="p-4 border-t border-white/5 bg-space-800/30">
+                  <Link
+                    to={`/workout?exercise=${day.exercises[0].type || 'squat'}`}
+                    className="btn-primary w-full flex items-center justify-center gap-2 py-3 shadow-lg shadow-neon-cyan/10"
+                  >
+                    <Dumbbell className="w-4 h-4" /> Start Today's Plan
+                  </Link>
+                </div>
+              )}
             </motion.div>
           );
         })}

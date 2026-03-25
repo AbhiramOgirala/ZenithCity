@@ -75,9 +75,20 @@ export default function NutritionPage() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start justify-between"><div><h1 className="text-2xl font-display font-bold text-white flex items-center gap-3"><span className="text-neon-orange text-3xl">🥗</span> AI Daily Nutrition</h1><p className="text-space-400 text-sm mt-1">Personalized meals optimized for <span className="text-neon-orange font-semibold">{plan.goal}</span>.</p></div><button onClick={handleRefresh} disabled={refreshing} className="glass-sm px-3 py-2 rounded-xl flex items-center gap-2 text-space-400 hover:text-white transition-all"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /><span className="text-xs font-mono">Regenerate</span></button></motion.div>
 
       {plan.diet_plan ? (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 overflow-y-auto pr-2 pb-6 flex-1 touch-scroll">
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ delay: 0.1 }} 
+          className="flex lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-x-auto lg:overflow-visible pb-6 snap-x snap-mandatory touch-scroll scrollbar-hide flex-1"
+        >
           {Object.entries(plan.diet_plan).map(([day, meals], idx) => (
-            <motion.div key={day} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="glass p-5 rounded-2xl border border-neon-orange/20 flex flex-col h-full bg-space-900/40">
+            <motion.div 
+              key={day} 
+              initial={{ opacity: 0, y: 10 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              transition={{ delay: idx * 0.05 }} 
+              className="glass p-5 rounded-2xl border border-neon-orange/20 flex flex-col bg-space-900/40 min-w-[85vw] sm:min-w-[340px] lg:min-w-0 snap-center flex-shrink-0"
+            >
               <h3 className="font-display font-bold text-neon-orange border-b border-space-700/50 pb-3 mb-4 uppercase tracking-widest text-sm text-center">{day}</h3>
               {meals.daily_calories && (
                 <div className="flex items-center justify-around bg-space-800/50 p-2 rounded-xl mb-4 text-xs font-mono text-space-300">
@@ -107,7 +118,7 @@ export default function NutritionPage() {
                        </p>
                        
                        {isObj && (
-                         <div className="absolute left-0 bottom-full mb-2 w-48 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity bg-space-900 p-3 rounded-xl border border-neon-cyan/30 text-xs shadow-2xl z-20 font-mono">
+                         <div className="absolute left-0 bottom-full mb-2 w-56 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity bg-space-900/95 backdrop-blur border border-neon-cyan/30 text-xs shadow-2xl z-20 font-mono p-3 rounded-xl">
                            <div className="flex justify-between text-space-300 pb-1 mb-1 border-b border-space-700/50"><span>Calories</span> <span className="text-white font-bold">{(mealVal as MealDetails).calories} kcal</span></div>
                            <div className="flex justify-between text-space-300 py-0.5"><span>Protein</span> <span className="text-neon-cyan">{(mealVal as MealDetails).protein}g</span></div>
                            <div className="flex justify-between text-space-300 py-0.5"><span>Carbs</span> <span className="text-neon-green">{(mealVal as MealDetails).carbs}g</span></div>
