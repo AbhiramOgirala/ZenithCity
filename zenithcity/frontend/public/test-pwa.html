@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Install Test - ZenithCity</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#00F5FF">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #020614;
+            color: white;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            border: 1px solid rgba(0,245,255,0.3);
+        }
+        button {
+            background: #00F5FF;
+            color: #020614;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: rgba(0,255,0,0.2); }
+        .error { background: rgba(255,0,0,0.2); }
+        .info { background: rgba(0,245,255,0.2); }
+    </style>
+</head>
+<body>
+    <h1>🔧 ZenithCity PWA Install Test</h1>
+    
+    <div class="test-section">
+        <h2>📱 Device Detection</h2>
+        <div id="device-info"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔍 PWA Status Check</h2>
+        <div id="pwa-status"></div>
+        <button onclick="checkPWAStatus()">Check Status</button>
+    </div>
+
+    <div class="test-section">
+        <h2>📦 Service Worker</h2>
+        <div id="sw-status"></div>
+        <button onclick="registerSW()">Register SW</button>
+    </div>
+
+    <div class="test-section">
+        <h2>💾 Install Prompt</h2>
+        <div id="install-status"></div>
+        <button onclick="triggerInstall()">Trigger Install</button>
+        <button onclick="showIOSInstructions()">iOS Instructions</button>
+    </div>
+
+    <div class="test-section">
+        <h2>📋 Manual Install Instructions</h2>
+        <div id="manual-instructions">
+            <h3>iOS Safari:</h3>
+            <ol>
+                <li>Tap the Share button (square with arrow)</li>
+                <li>Scroll down and tap "Add to Home Screen"</li>
+                <li>Tap "Add" to confirm</li>
+            </ol>
+            
+            <h3>Android Chrome:</h3>
+            <ol>
+                <li>Tap menu (3 dots) → "Add to Home Screen"</li>
+                <li>Or look for install banner</li>
+                <li>Tap "Install" or "Add"</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        let deferredPrompt;
+
+        // Device detection
+        function detectDevice() {
+            const info = document.getElementById('device-info');
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isAndroid = /Android/.test(navigator.userAgent);
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                               window.navigator.standalone === true;
+            
+            info.innerHTML = `
+                <div class="status info">
+                    <strong>User Agent:</strong> ${navigator.userAgent}<br>
+                    <strong>iOS:</strong> ${isIOS ? '✅' : '❌'}<br>
+                    <strong>Android:</strong> ${isAndroid ? '✅' : '❌'}<br>
+                    <strong>Standalone:</strong> ${isStandalone ? '✅ Already installed!' : '❌'}<br>
+                    <strong>Screen:</strong> ${window.screen.width}x${window.screen.height}
+                </div>
+            `;
+        }
+
+        // PWA status check
+        function checkPWAStatus() {
+            const status = document.getElementById('pwa-status');
+            
+            fetch('/manifest.json')
+                .then(response => response.json())
+                .then(manifest => {
+                    status.innerHTML = `
+                        <div class="status success">
+                            ✅ Manifest loaded successfully<br>
+                            <strong>Name:</strong> ${manifest.name}<br>
+                            <strong>Start URL:</strong> ${manifest.start_url}<br>
+                            <strong>Display:</strong> ${manifest.display}<br>
+                            <strong>Icons:</strong> ${manifest.icons.length} found
+                        </div>
+                    `;
+                })
+                .catch(error => {
+                    status.innerHTML = `<div class="status error">❌ Manifest error: ${error}</div>`;
+                });
+        }
+
+        // Service Worker registration
+        function registerSW() {
+            const status = document.getElementById('sw-status');
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        status.innerHTML = `
+                            <div class="status success">
+                                ✅ Service Worker registered<br>
+                                <strong>Scope:</strong> ${registration.scope}<br>
+                                <strong>State:</strong> ${registration.active ? 'Active' : 'Installing'}
+                            </div>
+                        `;
+                    })
+                    .catch(error => {
+                        status.innerHTML = `<div class="status error">❌ SW registration failed: ${error}</div>`;
+                    });
+            } else {
+                status.innerHTML = `<div class="status error">❌ Service Workers not supported</div>`;
+            }
+        }
+
+        // Install prompt handling
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('install-status').innerHTML = `
+                <div class="status success">✅ Install prompt available!</div>
+            `;
+        });
+
+        function triggerInstall() {
+            const status = document.getElementById('install-status');
+            
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    status.innerHTML = `
+                        <div class="status ${choiceResult.outcome === 'accepted' ? 'success' : 'info'}">
+                            Install ${choiceResult.outcome === 'accepted' ? 'accepted' : 'dismissed'}
+                        </div>
+                    `;
+                    deferredPrompt = null;
+                });
+            } else {
+                status.innerHTML = `
+                    <div class="status error">
+                        ❌ No install prompt available<br>
+                        Try visiting the site multiple times or use manual installation
+                    </div>
+                `;
+            }
+        }
+
+        function showIOSInstructions() {
+            alert('iOS Installation:\n\n1. Tap the Share button (⬆️)\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add" to confirm\n\nThe app will appear on your home screen!');
+        }
+
+        // Initialize
+        detectDevice();
+        checkPWAStatus();
+        registerSW();
+
+        // Check for existing install prompt
+        setTimeout(() => {
+            if (!deferredPrompt) {
+                document.getElementById('install-status').innerHTML = `
+                    <div class="status info">
+                        ⏳ Waiting for install prompt...<br>
+                        Visit the main site multiple times to trigger it.
+                    </div>
+                `;
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

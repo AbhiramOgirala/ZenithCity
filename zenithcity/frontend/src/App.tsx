@@ -15,7 +15,7 @@ import ProfilePage from './pages/ProfilePage';
 import OnboardingPage from './pages/OnboardingPage';
 import Layout from './components/Layout';
 import ToastContainer from './components/ui/ToastContainer';
-import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
+import PWAInstallBanner from './components/ui/PWAInstallBanner';
 import { useSocket } from './hooks/useSocket';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -141,7 +141,7 @@ export default function App() {
     <>
       <AppContent />
       <ToastContainer />
-      <PWAInstallPrompt />
+      <PWAInstallBanner />
     </>
   );
 }
