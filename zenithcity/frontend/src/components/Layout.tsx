@@ -26,7 +26,6 @@ const mobileNavItems = [
   { to: '/workout', icon: Dumbbell, label: 'Workout' },
   { to: '/city', icon: Building2, label: 'City' },
   { to: '/leaderboard', icon: Trophy, label: 'Ranks' },
-  { to: '/profile', icon: User, label: 'Profile' },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -36,6 +35,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { user } = useSelector((s: RootState) => s.auth);
   const { sidebarOpen } = useSelector((s: RootState) => s.ui);
   const [refreshing, setRefreshing] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Fetch fresh profile data on mount to ensure points balance is current
   useEffect(() => {
@@ -261,8 +261,66 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </NavLink>
             );
           })}
+          
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setShowMobileMenu(true)}
+            className="mobile-nav-item"
+            aria-label="Open menu"
+          >
+            <Menu className="w-5 h-5" aria-hidden="true" />
+            <span className="text-[10px] font-mono font-medium leading-none">Menu</span>
+          </button>
         </div>
       </nav>
+
+      {/* Mobile Menu Modal */}
+      <AnimatePresence>
+        {showMobileMenu && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-50 flex items-end lg:hidden"
+            onClick={() => setShowMobileMenu(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="w-full bg-space-900 border-t border-space-700 rounded-t-3xl p-6 pb-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-12 h-1 bg-space-700 rounded-full mx-auto mb-6" />
+              
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/profile');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white hover:bg-white/5 transition-all"
+                >
+                  <User className="w-5 h-5 text-neon-cyan" />
+                  <span className="font-body text-sm font-medium">Profile</span>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    handleLogout();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-neon-pink hover:bg-neon-pink/5 transition-all"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span className="font-body text-sm font-medium">Sign Out</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

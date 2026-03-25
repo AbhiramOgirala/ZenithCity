@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate 512x512 Icon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #111;
+            color: #fff;
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #00F5FF;
+            margin: 20px auto;
+            display: block;
+        }
+        button {
+            padding: 15px 30px;
+            background: #00F5FF;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover { opacity: 0.8; }
+        .instructions {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #222;
+            border-radius: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 ZenithCity Icon Generator</h1>
+    
+    <canvas id="icon" width="512" height="512"></canvas>
+    
+    <button onclick="downloadIcon()">📥 Download icon-512.png</button>
+    <button onclick="generateIcon()">🔄 Regenerate</button>
+    
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Click "Download icon-512.png" button</li>
+            <li>Save the file as <strong>icon-512.png</strong></li>
+            <li>Place it in <code>public/icons/</code> folder</li>
+            <li>Rebuild your app</li>
+            <li>Clear browser cache and reinstall PWA</li>
+        </ol>
+    </div>
+
+    <script>
+        function generateIcon() {
+            const canvas = document.getElementById('icon');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            const center = size / 2;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Background
+            ctx.fillStyle = '#020614';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Outer glow
+            const outerGlow = ctx.createRadialGradient(center, center, 0, center, center, size * 0.5);
+            outerGlow.addColorStop(0, 'rgba(0, 245, 255, 0.3)');
+            outerGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = outerGlow;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Main circle
+            const gradient = ctx.createRadialGradient(center, center, 0, center, center, size * 0.35);
+            gradient.addColorStop(0, '#00F5FF');
+            gradient.addColorStop(1, '#0088FF');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(center, center, size * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner circle
+            ctx.fillStyle = '#020614';
+            ctx.beginPath();
+            ctx.arc(center, center, size * 0.28, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Letter Z
+            ctx.fillStyle = '#00F5FF';
+            ctx.font = 'bold ' + (size * 0.35) + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Z', center, center);
+            
+            // Add some geometric details
+            ctx.strokeStyle = '#00F5FF';
+            ctx.lineWidth = 3;
+            
+            // Top accent
+            ctx.beginPath();
+            ctx.moveTo(center - 60, center - 120);
+            ctx.lineTo(center + 60, center - 120);
+            ctx.stroke();
+            
+            // Bottom accent
+            ctx.beginPath();
+            ctx.moveTo(center - 60, center + 120);
+            ctx.lineTo(center + 60, center + 120);
+            ctx.stroke();
+        }
+        
+        function downloadIcon() {
+            const canvas = document.getElementById('icon');
+            const link = document.createElement('a');
+            link.download = 'icon-512.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // Generate on load
+        generateIcon();
+    </script>
+</body>
+</html>
