@@ -83,30 +83,12 @@ export const repairBuilding = createAsyncThunk(
   }
 );
 
-// moveBuilding action
-export const moveBuilding = createAsyncThunk(
-  'city/move',
-  async (data: { buildingId: string; position_x: number; position_z: number }, { rejectWithValue }) => {
+export const deleteBuilding = createAsyncThunk(
+  'city/delete',
+  async (buildingId: string, { rejectWithValue }) => {
     try {
-      const result = await api.put(`/cities/buildings/${data.buildingId}/move`, {
-        position_x: data.position_x,
-        position_z: data.position_z
-      });
-      return result.building;
-    } catch (err: any) {
-      return rejectWithValue(err.message);
-    }
-  }
-);
-
-// expandTerritory now returns { city, expansion_amount, new_balance }
-export const expandTerritory = createAsyncThunk(
-  'city/expandTerritory',
-  async (points_to_spend: number, { rejectWithValue, dispatch }) => {
-    try {
-      const result = await api.post('/cities/expand-territory', { points_to_spend });
-      if (result.new_balance !== undefined) dispatch(updateBalance(result.new_balance));
-      return result;
+      await api.delete(`/cities/buildings/${buildingId}`);
+      return buildingId;
     } catch (err: any) {
       return rejectWithValue(err.message);
     }
@@ -149,16 +131,8 @@ const citySlice = createSlice({
           if (idx >= 0) s.city.buildings[idx] = a.payload;
         }
       })
-      .addCase(expandTerritory.fulfilled, (s, a) => {
-        if (s.city && a.payload.city) {
-          s.city.territory_size = a.payload.city.territory_size;
-        }
-      })
-      .addCase(moveBuilding.fulfilled, (s, a) => {
-        if (s.city && a.payload) {
-          const idx = s.city.buildings.findIndex(b => b.id === a.payload.id);
-          if (idx >= 0) s.city.buildings[idx] = a.payload;
-        }
+      .addCase(deleteBuilding.fulfilled, (s, a) => {
+        if (s.city) s.city.buildings = s.city.buildings.filter(b => b.id !== a.payload);
       });
   },
 });

@@ -26,15 +26,15 @@ export function calculateWorkoutPoints(input: PointsCalculationInput): number {
     points += Math.floor(gps_distance_km * 50);
   }
 
-  // POLICY: Manual workout (no camera) earns 0 points for strength/cardio.
-  // Only GPS-based exercises (running, walking) earn points without camera
-  // because GPS is independently verifiable.
+  // POLICY: Manual workout (no camera) earns reduced points (5 pts/min baseline).
+  // Only GPS-based exercises (running, walking) earn full distance points without camera.
   if (verification_status === 'manual') {
     const gpsOnly: ExerciseType[] = ['running', 'walking'];
     if (!gpsOnly.includes(exercise_type)) {
-      return 0; // No camera = no points for strength/cardio
+      // Manual/No-camera workouts for strength/cardio get 5 pts/min (half of cardio rate)
+      // instead of being based on unverified reps.
+      return Math.floor(durationMinutes * 5);
     }
-    // GPS exercises still earn distance points even in manual mode
   }
 
   return Math.max(0, points);

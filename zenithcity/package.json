@@ -4,6 +4,10 @@
   "workspaces": ["backend", "frontend"],
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
-    "build": "npm run build --workspace=backend && npm run build --workspace=frontend"
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "docker:build": "npm run build && docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   }
 }

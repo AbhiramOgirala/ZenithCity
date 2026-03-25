@@ -25,13 +25,11 @@ export async function initRedis(): Promise<void> {
       lazyConnect: true,
       connectTimeout: 3000,
       maxRetriesPerRequest: 1,
-      retryStrategy: () => null, // Do not retry on failures
+      retryStrategy: () => null,
     });
 
-    // Suppress unhandled error events
-    redis.on('error', (err) => {
-      // Ignore errors when using the memory fallback
-    });
+    redis.on('error', () => {}); // Mute connection background logs
+
 
     await redis.connect();
     redisAvailable = true;

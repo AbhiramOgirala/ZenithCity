@@ -10,9 +10,9 @@
  * window-grid textures drawn on canvas, and proper architectural massing.
  */
 
-import React, { useRef, useMemo, Suspense, useEffect } from 'react';
+import React, { useRef, useMemo, Suspense, useEffect, useState, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, Float, Edges } from '@react-three/drei';
+import { useGLTF, Float } from '@react-three/drei';
 import * as THREE from 'three';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -419,211 +419,248 @@ function Park({ level, damaged, timeOfDay = 12 }: { level: number; damaged: bool
 }
 
 // ─── STADIUM ─────────────────────────────────────────────────────────────────
-function Stadium({ level, damaged, timeOfDay = 12 }: { level: number; damaged: boolean; timeOfDay?: number }) {
-  const s = 0.9 + level * 0.22;
-  const outerR = 4.5 * s, innerR = 3.0 * s, ringH = 2.2 * s;
-  const lightCount = 8 + level * 2;
+function Stadium({ level, damaged }: { level: number; damaged: boolean }) {
+  const s = 0.9 + level * 0.18;
+  const outerR = 5.5 * s;
+  const innerR = 3.6 * s;
+  const wallH  = 3.2 * s;
+  const towerH = wallH + 4.5 * s;
+  const towerCount = 4 + level * 2;
 
-  const standsTex = useMemo(() => {
+  // Crowd texture — rows of colored seats
+  const crowdTex = useMemo(() => {
     const c = document.createElement('canvas');
-    c.width = 256; c.height = 64;
+    c.width = 512; c.height = 128;
     const ctx = c.getContext('2d')!;
-    const colors = damaged ? ['#444', '#555', '#666'] : ['#F44336','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
-    for (let i = 0; i < 256; i += 4) {
-      ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-      ctx.fillRect(i, 0, 4, 64);
+    const seatColors = ['#c0392b','#2980b9','#27ae60','#f39c12','#8e44ad','#16a085','#e74c3c','#3498db'];
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, 512, 128);
+    // Seat rows
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 64; col++) {
+        const lit = Math.random() > 0.15;
+        ctx.fillStyle = lit ? seatColors[Math.floor(Math.random() * seatColors.length)] : '#111';
+        ctx.fillRect(col * 8 + 1, row * 15 + 2, 6, 11);
+      }
     }
-    return new THREE.CanvasTexture(c);
-  }, [damaged]);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }, []);
+
+  // Concrete facade texture
+  const concreteTex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#d0cfc8';
+    ctx.fillRect(0, 0, 256, 256);
+    // Horizontal bands (floors)
+    for (let y = 0; y < 256; y += 32) {
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(0, y, 256, 2);
+    }
+    // Vertical columns
+    for (let x = 0; x < 256; x += 24) {
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fillRect(x, 0, 2, 256);
+    }
+    // Arch openings
+    for (let x = 12; x < 256; x += 24) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.arc(x, 28, 8, Math.PI, 0);
+      ctx.rect(x - 8, 28, 16, 20);
+      ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(6, 1);
+    return t;
+  }, []);
 
   return (
     <group>
-      {/* Base foundation */}
-      <mesh position={[0, 0.1, 0]} receiveShadow>
-        <cylinderGeometry args={[outerR + 0.5, outerR + 0.5, 0.2, 48]} />
-        <meshStandardMaterial color={damaged ? '#333' : '#8D6E63'} roughness={0.8} />
+      {/* ── Foundation ring ── */}
+      <mesh position={[0, 0.15, 0]} receiveShadow>
+        <cylinderGeometry args={[outerR + 0.5, outerR + 0.7, 0.3, 64]} />
+        <meshStandardMaterial color="#888880" roughness={0.9} />
       </mesh>
 
-      {/* Outer wall ring - more detailed */}
-      <mesh position={[0, ringH / 2, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[outerR, outerR * 1.04, ringH, 48]} />
-        <meshStandardMaterial 
-          color={damaged ? '#666' : '#ECEFF1'} 
-          roughness={0.3} 
-          metalness={0.2}
-          emissive={damaged ? '#000' : '#E3F2FD'}
-          emissiveIntensity={0.05}
-        />
-      </mesh>
-
-      {/* Architectural details - horizontal bands */}
-      {[0.3, 0.6, 0.9].map((frac, i) => (
-        <mesh key={`band-${i}`} position={[0, ringH * frac, 0]}>
-          <cylinderGeometry args={[outerR * 1.02, outerR * 1.02, 0.1, 48]} />
-          <meshStandardMaterial 
-            color={damaged ? '#555' : '#FF6B35'} 
-            roughness={0.2} 
-            metalness={0.6}
-            emissive={damaged ? '#000' : '#FF6B35'}
-            emissiveIntensity={0.1}
-          />
-        </mesh>
-      ))}
-
-      {/* Stands interior (visible from above) */}
-      <mesh position={[0, ringH * 0.6, 0]}>
-        <cylinderGeometry args={[innerR * 0.98, outerR * 0.92, ringH * 0.5, 48, 1, true]} />
-        <meshStandardMaterial side={THREE.BackSide} map={standsTex} roughness={0.9} />
-      </mesh>
-
-      {/* Field - more realistic */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} receiveShadow>
-        <circleGeometry args={[innerR * 0.97, 48]} />
-        <meshStandardMaterial 
-          color={damaged ? '#3A4A30' : '#2E7D32'} 
-          roughness={0.9}
-          emissive={damaged ? '#000' : '#1B5E20'}
-          emissiveIntensity={0.05}
-        />
-      </mesh>
-
-      {/* Field markings - more detailed */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
-        <ringGeometry args={[innerR * 0.3, innerR * 0.32, 32]} />
-        <meshStandardMaterial color="white" roughness={0.9} emissive="#FFFFFF" emissiveIntensity={0.1} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
-        <planeGeometry args={[innerR * 1.8, 0.1]} />
-        <meshStandardMaterial color="white" roughness={0.9} emissive="#FFFFFF" emissiveIntensity={0.1} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, Math.PI / 2, 0]} position={[0, 0.06, 0]}>
-        <planeGeometry args={[innerR * 1.8, 0.1]} />
-        <meshStandardMaterial color="white" roughness={0.9} emissive="#FFFFFF" emissiveIntensity={0.1} />
-      </mesh>
-
-      {/* Goal posts */}
-      {[1, -1].map((dir, i) => (
-        <group key={`goal-${i}`} position={[0, 0, dir * innerR * 0.8]}>
-          <mesh position={[-0.3, 0.8, 0]}>
-            <cylinderGeometry args={[0.03, 0.03, 1.6, 8]} />
-            <meshStandardMaterial color="white" roughness={0.3} metalness={0.1} />
-          </mesh>
-          <mesh position={[0.3, 0.8, 0]}>
-            <cylinderGeometry args={[0.03, 0.03, 1.6, 8]} />
-            <meshStandardMaterial color="white" roughness={0.3} metalness={0.1} />
-          </mesh>
-          <mesh position={[0, 1.6, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.03, 0.03, 0.6, 8]} />
-            <meshStandardMaterial color="white" roughness={0.3} metalness={0.1} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* Roof structure */}
-      <mesh position={[0, ringH + 0.8, 0]} castShadow>
-        <cylinderGeometry args={[outerR * 1.1, outerR * 0.9, 0.3, 48]} />
-        <meshStandardMaterial 
-          color={damaged ? '#444' : '#37474F'} 
-          roughness={0.1} 
-          metalness={0.8}
-          emissive={damaged ? '#000' : '#263238'}
-          emissiveIntensity={0.1}
-        />
-      </mesh>
-
-      {/* Concourse rim - enhanced */}
-      <mesh position={[0, ringH + 0.15, 0]} castShadow>
-        <torusGeometry args={[(outerR + innerR * 0.6) / 1.8, 0.28, 8, 48]} />
-        <meshStandardMaterial 
-          color={damaged ? '#555' : '#FF6B35'} 
-          roughness={0.2} 
-          metalness={0.6}
-          emissive={damaged ? '#000' : '#FF6B35'} 
-          emissiveIntensity={damaged ? 0 : 0.2} 
-        />
-      </mesh>
-
-      {/* Tiered seating rings - more prominent */}
-      {[0.3, 0.6, 0.85].map((frac, i) => (
-        <mesh key={i} position={[0, ringH * (i * 0.25 + 0.1), 0]}>
-          <torusGeometry args={[innerR + (outerR - innerR) * frac, 0.15, 6, 48]} />
-          <meshStandardMaterial 
-            color={damaged ? '#555' : '#CFD8DC'} 
-            roughness={0.5}
-            metalness={0.2}
-          />
-        </mesh>
-      ))}
-
-      {/* Floodlight towers - enhanced */}
-      {Array.from({ length: lightCount }).map((_, i) => {
-        const a = (i / lightCount) * Math.PI * 2;
-        const lx = Math.cos(a) * (outerR + 0.6);
-        const lz = Math.sin(a) * (outerR + 0.6);
+      {/* ── Outer facade wall (multi-tier) ── */}
+      {[0, 1, 2].map(tier => {
+        const r = outerR - tier * 0.15;
+        const yBase = 0.3 + tier * (wallH / 3);
+        const h = wallH / 3 + 0.1;
         return (
-          <group key={i} position={[lx, 0, lz]}>
-            {/* Tower base */}
-            <mesh position={[0, 0.3, 0]}>
-              <cylinderGeometry args={[0.15, 0.2, 0.6, 8]} />
-              <meshStandardMaterial color={damaged ? '#444' : '#607D8B'} metalness={0.7} roughness={0.3} />
+          <mesh key={tier} position={[0, yBase + h / 2, 0]} castShadow receiveShadow>
+            <cylinderGeometry args={[r, r + 0.1, h, 64, 1, true]} />
+            <meshStandardMaterial
+              color={damaged ? '#777' : '#ccc9be'}
+              map={damaged ? undefined : concreteTex}
+              roughness={0.7} metalness={0.05} side={THREE.DoubleSide}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* ── Roof canopy (partial — covers upper stands) ── */}
+      <mesh position={[0, wallH + 0.4, 0]} castShadow>
+        <cylinderGeometry args={[outerR * 0.98, outerR * 0.72, 0.35, 64, 1, true]} />
+        <meshStandardMaterial color={damaged ? '#555' : '#b0a898'} roughness={0.5} metalness={0.1} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Canopy underside — dark */}
+      <mesh position={[0, wallH + 0.22, 0]}>
+        <cylinderGeometry args={[outerR * 0.97, outerR * 0.71, 0.05, 64, 1, true]} />
+        <meshStandardMaterial color="#333" roughness={0.9} side={THREE.BackSide} />
+      </mesh>
+
+      {/* ── Tiered seating bowl (3 tiers) ── */}
+      {[
+        { r: outerR * 0.92, innerRatio: 0.72, y: wallH * 0.15, h: wallH * 0.32 },
+        { r: outerR * 0.80, innerRatio: 0.65, y: wallH * 0.42, h: wallH * 0.28 },
+        { r: outerR * 0.68, innerRatio: 0.58, y: wallH * 0.65, h: wallH * 0.22 },
+      ].map((tier, i) => (
+        <mesh key={i} position={[0, tier.y + tier.h / 2, 0]}>
+          <cylinderGeometry args={[tier.r * tier.innerRatio, tier.r, tier.h, 64, 1, true]} />
+          <meshStandardMaterial map={crowdTex} roughness={0.95} side={THREE.BackSide} />
+        </mesh>
+      ))}
+
+      {/* ── Playing field ── */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.32, 0]} receiveShadow>
+        <circleGeometry args={[innerR, 64]} />
+        <meshStandardMaterial color={damaged ? '#3a4a30' : '#2d8a3e'} roughness={0.95} />
+      </mesh>
+
+      {/* Field — pitch lines */}
+      {!damaged && (
+        <>
+          {/* Centre circle */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.33, 0]}>
+            <ringGeometry args={[innerR * 0.22, innerR * 0.235, 48]} />
+            <meshStandardMaterial color="white" roughness={0.9} />
+          </mesh>
+          {/* Centre spot */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.33, 0]}>
+            <circleGeometry args={[0.12, 16]} />
+            <meshStandardMaterial color="white" roughness={0.9} />
+          </mesh>
+          {/* Halfway line */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.33, 0]}>
+            <planeGeometry args={[innerR * 1.85, 0.08]} />
+            <meshStandardMaterial color="white" roughness={0.9} />
+          </mesh>
+          {/* Penalty boxes */}
+          {[-1, 1].map(side => (
+            <group key={side}>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[side * innerR * 0.72, 0.33, 0]}>
+                <planeGeometry args={[0.08, innerR * 0.7]} />
+                <meshStandardMaterial color="white" roughness={0.9} />
+              </mesh>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[side * (innerR * 0.72 - 0.04), 0.33, 0]}>
+                <planeGeometry args={[innerR * 0.28, 0.08]} />
+                <meshStandardMaterial color="white" roughness={0.9} />
+              </mesh>
+            </group>
+          ))}
+          {/* Goal posts */}
+          {[-1, 1].map(side => (
+            <group key={side} position={[side * innerR * 0.93, 0.32, 0]}>
+              <mesh position={[0, 0.6, -0.55]} castShadow>
+                <cylinderGeometry args={[0.04, 0.04, 1.2, 6]} />
+                <meshStandardMaterial color="white" metalness={0.6} roughness={0.3} />
+              </mesh>
+              <mesh position={[0, 0.6, 0.55]} castShadow>
+                <cylinderGeometry args={[0.04, 0.04, 1.2, 6]} />
+                <meshStandardMaterial color="white" metalness={0.6} roughness={0.3} />
+              </mesh>
+              <mesh position={[0, 1.2, 0]} castShadow rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.04, 0.04, 1.1, 6]} />
+                <meshStandardMaterial color="white" metalness={0.6} roughness={0.3} />
+              </mesh>
+            </group>
+          ))}
+        </>
+      )}
+
+      {/* ── Corner floodlight towers ── */}
+      {Array.from({ length: towerCount }).map((_, i) => {
+        const angle = (i / towerCount) * Math.PI * 2 + Math.PI / towerCount;
+        const tx = Math.cos(angle) * (outerR + 0.8);
+        const tz = Math.sin(angle) * (outerR + 0.8);
+        const th = towerH;
+        return (
+          <group key={i} position={[tx, 0, tz]}>
+            {/* Tower shaft */}
+            <mesh position={[0, th / 2, 0]} castShadow>
+              <boxGeometry args={[0.22, th, 0.22]} />
+              <meshStandardMaterial color="#607D8B" metalness={0.7} roughness={0.3} />
             </mesh>
-            {/* Tower pole */}
-            <mesh position={[0, ringH + 1.8, 0]} castShadow>
-              <cylinderGeometry args={[0.06, 0.09, ringH + 3.5, 8]} />
-              <meshStandardMaterial color={damaged ? '#555' : '#90A4AE'} metalness={0.8} roughness={0.2} />
+            {/* Cross brace */}
+            <mesh position={[0, th * 0.6, 0]} rotation={[0, angle, 0]}>
+              <boxGeometry args={[0.08, 0.08, 0.9]} />
+              <meshStandardMaterial color="#546E7A" metalness={0.6} roughness={0.4} />
             </mesh>
-            {/* Light fixture */}
-            <mesh position={[0, ringH + 3.6, 0]}>
-              <boxGeometry args={[0.8, 0.15, 0.4]} />
-              <meshStandardMaterial 
-                color={damaged ? '#333' : '#FAFAFA'}
-                emissive={damaged ? '#000' : '#FFFDE7'} 
-                emissiveIntensity={damaged ? 0 : 0.8}
-                metalness={0.1}
-                roughness={0.2}
-              />
+            {/* Light bar housing */}
+            <mesh position={[0, th + 0.12, 0]} castShadow>
+              <boxGeometry args={[1.4, 0.18, 0.45]} />
+              <meshStandardMaterial color="#37474F" metalness={0.5} roughness={0.4} />
             </mesh>
-            {/* Light beam effect */}
-            {!damaged && (
-              <>
-                <pointLight 
-                  position={[0, ringH + 3.7, 0]}
-                  color="#FFF9C4" 
-                  intensity={1.2} 
-                  distance={15}
-                  decay={2}
-                />
-                <mesh position={[0, ringH + 3.7, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                  <coneGeometry args={[2, 4, 8, 1, true]} />
-                  <meshBasicMaterial 
-                    color="#FFFDE7" 
-                    transparent 
-                    opacity={0.1}
-                    side={THREE.DoubleSide}
+            {/* Individual lamp units */}
+            {[-0.45, 0, 0.45].map((ox, li) => (
+              <group key={li} position={[ox, th + 0.12, 0]}>
+                <mesh>
+                  <boxGeometry args={[0.3, 0.12, 0.3]} />
+                  <meshStandardMaterial
+                    color="#FFFDE7"
+                    emissive={damaged ? '#000' : '#FFF9C4'}
+                    emissiveIntensity={damaged ? 0 : 2.5}
+                    roughness={0.1}
                   />
                 </mesh>
-              </>
-            )}
+                {!damaged && (
+                  <spotLight
+                    position={[0, 0, 0]}
+                    target-position={[
+                      -tx * 0.6,
+                      -th,
+                      -tz * 0.6,
+                    ]}
+                    color="#FFF8E1"
+                    intensity={8}
+                    distance={towerH * 3}
+                    angle={0.45}
+                    penumbra={0.4}
+                    castShadow={false}
+                  />
+                )}
+              </group>
+            ))}
           </group>
         );
       })}
 
-      {/* Stadium name/logo area */}
-      <mesh position={[0, ringH * 0.8, outerR * 1.02]} castShadow>
-        <planeGeometry args={[2, 0.8]} />
-        <meshStandardMaterial 
-          color={damaged ? '#333' : '#1976D2'} 
-          emissive={damaged ? '#000' : '#0D47A1'}
-          emissiveIntensity={damaged ? 0 : 0.3}
-        />
-      </mesh>
-
-      {/* Health indicator ring */}
-      {damaged && (
-        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[outerR + 0.8, outerR + 1.0, 32]} />
-          <meshBasicMaterial color="#FF1744" transparent opacity={0.6} />
+      {/* ── Scoreboard ── */}
+      <group position={[0, wallH * 0.7, -(outerR * 0.88)]}>
+        <mesh castShadow>
+          <boxGeometry args={[2.8, 1.4, 0.15]} />
+          <meshStandardMaterial color="#111" roughness={0.8} />
         </mesh>
+        <mesh position={[0, 0, 0.09]}>
+          <boxGeometry args={[2.5, 1.1, 0.02]} />
+          <meshStandardMaterial
+            color={damaged ? '#222' : '#001a00'}
+            emissive={damaged ? '#000' : '#00ff44'}
+            emissiveIntensity={damaged ? 0 : 0.15}
+            roughness={0.5}
+          />
+        </mesh>
+      </group>
+
+      {/* ── Ambient field light ── */}
+      {!damaged && (
+        <pointLight position={[0, wallH * 0.5, 0]} color="#e8f5e9" intensity={0.6} distance={innerR * 2.5} />
       )}
 
       {/* Central lighting */}
@@ -743,145 +780,75 @@ function UnderConstruction({ type }: { type: string }) {
 }
 
 // ─── Ground + City Infrastructure ─────────────────────────────────────────────
-function CityGround({ timeOfDay = 12 }: { timeOfDay?: number }) {
-  // Create grass texture
-  const grassTexture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d')!;
-    
-    // Base grass color that changes with time of day
-    const hour = timeOfDay % 24;
-    let baseGreen = '#2d5016';
-    let accentGreen = '#4a7c23';
-    
-    if (hour >= 6 && hour < 18) {
-      // Daytime - brighter greens
-      baseGreen = '#4a7c23';
-      accentGreen = '#6ba832';
-    } else if (hour >= 18 && hour < 20) {
-      // Evening - warmer greens
-      baseGreen = '#3d6018';
-      accentGreen = '#5a8c25';
-    } else {
-      // Night - darker greens
-      baseGreen = '#1a3008';
-      accentGreen = '#2d5016';
-    }
-    
-    // Fill base color
-    ctx.fillStyle = baseGreen;
+function CityGround() {
+  const grassTex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d')!;
+    // Base grass color
+    ctx.fillStyle = '#2d5a1b';
     ctx.fillRect(0, 0, 512, 512);
-    
-    // Add grass texture with random patches
-    for (let i = 0; i < 2000; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const size = Math.random() * 3 + 1;
-      
-      ctx.fillStyle = Math.random() > 0.5 ? accentGreen : baseGreen;
+    // Variation patches
+    for (let i = 0; i < 800; i++) {
+      const x = Math.random() * 512, y = Math.random() * 512;
+      const r = 2 + Math.random() * 6;
+      const shade = Math.random() > 0.5 ? '#3a7a22' : '#1e4010';
+      ctx.fillStyle = shade;
       ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.ellipse(x, y, r, r * 0.6, Math.random() * Math.PI, 0, Math.PI * 2);
       ctx.fill();
     }
-    
-    // Add some dirt patches
-    ctx.fillStyle = '#8B4513';
-    for (let i = 0; i < 50; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const size = Math.random() * 8 + 3;
-      
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(20, 20);
+    return t;
+  }, []);
+
+  const roadTex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#1a1e24';
+    ctx.fillRect(0, 0, 64, 64);
+    // Asphalt grain
+    for (let i = 0; i < 200; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
+      ctx.fillRect(Math.random() * 64, Math.random() * 64, 1, 1);
     }
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(8, 8);
-    return texture;
-  }, [Math.floor(timeOfDay / 3)]); // Update every 3 hours
-  
-  // Create road texture
-  const roadTexture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d')!;
-    
-    // Dark asphalt base
-    ctx.fillStyle = '#2a2a2a';
-    ctx.fillRect(0, 0, 256, 256);
-    
-    // Add some texture variation
-    for (let i = 0; i < 500; i++) {
-      const x = Math.random() * 256;
-      const y = Math.random() * 256;
-      const size = Math.random() * 2;
-      
-      ctx.fillStyle = `rgba(${40 + Math.random() * 20}, ${40 + Math.random() * 20}, ${40 + Math.random() * 20}, 0.3)`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(4, 4);
-    return texture;
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(4, 4);
+    return t;
   }, []);
 
   return (
     <>
-      {/* Large grass ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial 
-          map={grassTexture}
-          roughness={0.9}
-          metalness={0.0}
-        />
+      {/* Grass ground plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[160, 160]} />
+        <meshStandardMaterial map={grassTex} roughness={0.95} color="#3a6b22" />
       </mesh>
 
-      {/* Elevated grass areas around the city */}
-      {Array.from({ length: 4 }, (_, i) => { // Reduced from 8 to 4
-        const angle = (i / 4) * Math.PI * 2;
-        const radius = 60 + Math.random() * 20;
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        const size = 15 + Math.random() * 10;
-        
-        return (
-          <mesh 
-            key={`grass-${i}`}
-            rotation={[-Math.PI / 2, 0, Math.random() * Math.PI]} 
-            position={[x, 0.1, z]} 
-            receiveShadow
-          >
-            <planeGeometry args={[size, size]} />
-            <meshStandardMaterial 
-              map={grassTexture}
-              roughness={0.8}
-              metalness={0.0}
-            />
-          </mesh>
-        );
-      })}
-
-      {/* Road network with better texture */}
+      {/* Roads */}
       {[-3, -1, 1, 3].flatMap(i =>
         [false, true].map((vert, j) => (
           <mesh key={`road${i}${j}`}
             rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
             position={[vert ? i * 10 : 0, 0.001, vert ? 0 : i * 10]}>
-            <planeGeometry args={[100, 2.5]} />
-            <meshStandardMaterial 
-              map={roadTexture}
-              roughness={0.8}
-              metalness={0.1}
-            />
+            <planeGeometry args={[100, 2.8]} />
+            <meshStandardMaterial map={roadTex} roughness={0.9} />
+          </mesh>
+        ))
+      )}
+
+      {/* Sidewalks */}
+      {[-3, -1, 1, 3].flatMap(i =>
+        [false, true].map((vert, j) => (
+          <mesh key={`road${i}${j}`}
+            rotation={[-Math.PI / 2, 0, vert ? Math.PI / 2 : 0]}
+            position={[vert ? i * 10 : 0, 0.002, vert ? 0 : i * 10]}>
+            <planeGeometry args={[100, 1.4]} />
+            <meshStandardMaterial color="#2a2e35" roughness={0.95} />
           </mesh>
         ))
       )}
@@ -1049,21 +1016,58 @@ function CityGround({ timeOfDay = 12 }: { timeOfDay?: number }) {
 }
 
 function StreetLamp({ x, z }: { x: number; z: number }) {
+  const beamRef = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    if (beamRef.current) {
+      const mat = beamRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.04 + Math.sin(clock.elapsedTime * 0.7 + x) * 0.015;
+    }
+  });
+
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, 2.2, 0]} castShadow>
-        <cylinderGeometry args={[0.035, 0.05, 4.4, 5]} />
+      {/* Pole */}
+      <mesh position={[0, 2.5, 0]} castShadow>
+        <cylinderGeometry args={[0.04, 0.06, 5, 6]} />
+        <meshStandardMaterial color="#37474F" metalness={0.85} roughness={0.2} />
+      </mesh>
+      {/* Arm */}
+      <mesh position={[0.35, 4.9, 0]} rotation={[0, 0, 0.22]} castShadow>
+        <cylinderGeometry args={[0.025, 0.03, 0.75, 5]} />
         <meshStandardMaterial color="#455A64" metalness={0.8} roughness={0.2} />
       </mesh>
-      <mesh position={[0.25, 4.3, 0]} rotation={[0, 0, 0.18]}>
-        <cylinderGeometry args={[0.025, 0.03, 0.55, 4]} />
-        <meshStandardMaterial color="#546E7A" metalness={0.8} roughness={0.2} />
+      {/* Lamp housing */}
+      <mesh position={[0.6, 4.85, 0]} castShadow>
+        <boxGeometry args={[0.28, 0.12, 0.18]} />
+        <meshStandardMaterial color="#263238" metalness={0.6} roughness={0.4} />
       </mesh>
-      <mesh position={[0.42, 4.35, 0]}>
-        <sphereGeometry args={[0.12, 8, 8]} />
-        <meshStandardMaterial color="#FFFDE7" emissive="#FFF9C4" emissiveIntensity={1.2} />
+      {/* Lamp bulb glow */}
+      <mesh position={[0.6, 4.79, 0]}>
+        <boxGeometry args={[0.22, 0.04, 0.14]} />
+        <meshStandardMaterial color="#FFF9C4" emissive="#FFF176" emissiveIntensity={3} roughness={0.1} />
       </mesh>
-      <pointLight position={[0.42, 4.3, 0]} color="#FFF8E1" intensity={0.7} distance={14} decay={2} />
+      {/* Light cone beam (volumetric illusion) */}
+      <mesh ref={beamRef} position={[0.6, 3.6, 0]} rotation={[0, 0, 0]}>
+        <coneGeometry args={[1.4, 2.5, 16, 1, true]} />
+        <meshBasicMaterial color="#fffde7" transparent opacity={0.055} side={THREE.FrontSide} depthWrite={false} />
+      </mesh>
+      {/* Ground light pool */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.6, 0.02, 0]}>
+        <circleGeometry args={[1.8, 24]} />
+        <meshBasicMaterial color="#fff9c4" transparent opacity={0.08} depthWrite={false} />
+      </mesh>
+      {/* Actual light source */}
+      <spotLight
+        position={[0.6, 4.78, 0]}
+        angle={0.55}
+        penumbra={0.5}
+        intensity={12}
+        distance={18}
+        color="#FFF8E1"
+        castShadow={false}
+        target-position={[0.6, 0, 0]}
+      />
     </group>
   );
 }
@@ -1108,128 +1112,247 @@ function TerritoryBoundary({ size }: { size: number }) {
   );
 }
 
+// ─── Demolish Animation ───────────────────────────────────────────────────────
+interface DebrisChunk {
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  rot: THREE.Euler;
+  rotVel: THREE.Vector3;
+  scale: number;
+  color: string;
+}
+
+function DemolishAnimation({ type, onDone }: { type: string; onDone: () => void }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const dustRef  = useRef<THREE.Mesh>(null);
+  const t = useRef(0);
+  const done = useRef(false);
+
+  const buildingH = { house: 3, apartment: 6, office: 10, park: 1, stadium: 5 }[type] || 4;
+  const colors = ['#888', '#666', '#aaa', '#555', '#999', '#C07050', '#607D8B'];
+
+  const chunks = useMemo<DebrisChunk[]>(() => {
+    return Array.from({ length: 18 }, (_, i) => {
+      const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.5;
+      const speed = 3 + Math.random() * 5;
+      return {
+        pos: new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          Math.random() * buildingH * 0.8,
+          (Math.random() - 0.5) * 2,
+        ),
+        vel: new THREE.Vector3(
+          Math.cos(angle) * speed,
+          4 + Math.random() * 6,
+          Math.sin(angle) * speed,
+        ),
+        rot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
+        rotVel: new THREE.Vector3(
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8,
+        ),
+        scale: 0.15 + Math.random() * 0.45,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      };
+    });
+  }, [buildingH]);
+
+  useFrame((_, delta) => {
+    if (done.current) return;
+    t.current += delta;
+    const dt = Math.min(delta, 0.05);
+
+    // Animate each chunk
+    if (groupRef.current) {
+      groupRef.current.children.forEach((child, i) => {
+        if (i >= chunks.length) return;
+        const c = chunks[i];
+        c.vel.y -= 12 * dt; // gravity
+        c.pos.addScaledVector(c.vel, dt);
+        if (c.pos.y < 0) { c.pos.y = 0; c.vel.y *= -0.3; c.vel.x *= 0.7; c.vel.z *= 0.7; }
+        child.position.copy(c.pos);
+        child.rotation.x += c.rotVel.x * dt;
+        child.rotation.y += c.rotVel.y * dt;
+        child.rotation.z += c.rotVel.z * dt;
+        // Fade out after 0.8s
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (t.current > 0.8) mat.opacity = Math.max(0, 1 - (t.current - 0.8) / 0.6);
+      });
+    }
+
+    // Dust ring expands
+    if (dustRef.current) {
+      const s = 1 + t.current * 8;
+      dustRef.current.scale.set(s, 1, s);
+      (dustRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.4 - t.current * 0.4);
+    }
+
+    if (t.current > 1.6 && !done.current) {
+      done.current = true;
+      onDone();
+    }
+  });
+
+  return (
+    <group>
+      {/* Debris chunks */}
+      <group ref={groupRef}>
+        {chunks.map((c, i) => (
+          <mesh key={i} position={c.pos.clone()} rotation={c.rot} scale={c.scale}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color={c.color} transparent opacity={1} roughness={0.9} />
+          </mesh>
+        ))}
+      </group>
+      {/* Dust ring */}
+      <mesh ref={dustRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+        <ringGeometry args={[0.5, 1.5, 32]} />
+        <meshBasicMaterial color="#c8a87a" transparent opacity={0.4} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+// ─── Placement Ghost ──────────────────────────────────────────────────────────
+function PlacementGhost({ type, onPlace }: { type: string; onPlace: (x: number, z: number) => void }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const { camera, gl } = useThree();
+  const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const pos = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      if (raycaster.ray.intersectPlane(plane, target)) {
+        pos.current.set(
+          Math.round(target.x / 3) * 3,
+          0,
+          Math.round(target.z / 3) * 3,
+        );
+      }
+    };
+
+    const onClick = (e: MouseEvent) => {
+      // Only left-click places
+      if (e.button !== 0) return;
+      onPlace(pos.current.x, pos.current.z);
+    };
+
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('click', onClick);
+    return () => {
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('click', onClick);
+    };
+  }, [camera, gl, plane, raycaster, target, onPlace]);
+
+  useFrame(() => {
+    if (meshRef.current) {
+      meshRef.current.position.lerp(pos.current, 0.25);
+    }
+  });
+
+  const sizes: Record<string, [number, number, number]> = {
+    house: [2.5, 2.5, 2.5], apartment: [2.5, 5, 2.5],
+    office: [2.5, 8, 2.5], park: [5, 0.2, 5], stadium: [8, 3, 8],
+  };
+  const [sw, sh, sd] = sizes[type] || [2.5, 3, 2.5];
+
+  return (
+    <mesh ref={meshRef} position={[0, sh / 2, 0]}>
+      <boxGeometry args={[sw, sh, sd]} />
+      <meshStandardMaterial color="#00F5FF" transparent opacity={0.35} wireframe={false} />
+      <meshStandardMaterial color="#00F5FF" transparent opacity={0.6} wireframe />
+    </mesh>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function City3D({
   buildings,
   territorySize = 100,
-  timeOfDay = 12,
-  sunIntensity = 1,
-  placementMode = null,
-  isDragMode = false,
-  onBuildingPlace,
-  onBuildingMove,
-  onPlacementCancel,
+  placementType,
+  onPlace,
+  onBuildingClick,
+  demolishingId,
+  onDemolishDone,
 }: {
   buildings: BuildingData[];
   territorySize?: number;
-  timeOfDay?: number;
-  sunIntensity?: number;
-  placementMode?: string | null;
-  isDragMode?: boolean;
-  onBuildingPlace?: (position: { x: number, z: number }) => void;
-  onBuildingMove?: (buildingId: string, position: { x: number, z: number }) => void;
-  onPlacementCancel?: () => void;
+  placementType?: string | null;
+  onPlace?: (x: number, z: number) => void;
+  onBuildingClick?: (b: BuildingData, screenX: number, screenY: number) => void;
+  demolishingId?: string | null;
+  onDemolishDone?: () => void;
 }) {
   return (
     <group>
       <CityGround timeOfDay={timeOfDay} />
       <TerritoryBoundary size={territorySize} />
 
-      {/* Invisible ground plane for click detection */}
-      {placementMode && (
-        <mesh 
-          rotation={[-Math.PI / 2, 0, 0]} 
-          position={[0, -0.01, 0]}
-          visible={false}
-        >
-          <planeGeometry args={[200, 200]} />
-          <meshBasicMaterial transparent opacity={0} />
-        </mesh>
-      )}
-
-      {/* Visual grid overlay in placement mode */}
-      {placementMode && (
-        <group>
-          {/* Grid lines */}
-          {Array.from({ length: 21 }, (_, i) => i - 10).map(i => (
-            <group key={`grid-${i}`}>
-              {/* Vertical lines */}
-              <line>
-                <bufferGeometry>
-                  <bufferAttribute
-                    attach="attributes-position"
-                    count={2}
-                    array={new Float32Array([
-                      i * 2, 0.001, -40,
-                      i * 2, 0.001, 40
-                    ])}
-                    itemSize={3}
-                  />
-                </bufferGeometry>
-                <lineBasicMaterial color="#00ff00" transparent opacity={0.1} />
-              </line>
-              {/* Horizontal lines */}
-              <line>
-                <bufferGeometry>
-                  <bufferAttribute
-                    attach="attributes-position"
-                    count={2}
-                    array={new Float32Array([
-                      -40, 0.001, i * 2,
-                      40, 0.001, i * 2
-                    ])}
-                    itemSize={3}
-                  />
-                </bufferGeometry>
-                <lineBasicMaterial color="#00ff00" transparent opacity={0.1} />
-              </line>
-            </group>
-          ))}
-        </group>
-      )}
-
-      {/* Street lamps at intersections */}
       {[-10, 0, 10].flatMap(x => [-10, 0, 10].map(z => (
         <StreetLamp key={`l${x}${z}`} x={x + 1.2} z={z + 1.2} />
       )))}
 
-      {/* Buildings */}
-      {buildings.map(b => (
-        <DraggableBuilding
-          key={b.id}
-          buildingId={b.id}
-          initialPosition={[b.position_x, b.position_y, b.position_z]}
-          onMove={onBuildingMove || (() => {})}
-          territorySize={territorySize}
-          isDragMode={isDragMode}
-          existingBuildings={buildings}
-          buildingType={b.type}
-        >
-          {b.status === 'under_construction'
-            ? <UnderConstruction type={b.type} />
-            : <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} timeOfDay={timeOfDay} />
-          }
-          {/* Damage pulse ring on ground */}
-          {b.status === 'damaged' && (
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
-              <ringGeometry args={[1.5, 2.0, 32]} />
-              <meshStandardMaterial color="#FF0040" emissive="#FF0040" emissiveIntensity={0.6}
-                transparent opacity={0.25} />
-            </mesh>
-          )}
-        </DraggableBuilding>
-      ))}
+      {buildings.map(b => {
+        const isDemolishing = demolishingId === b.id;
+        return (
+          <group
+            key={b.id}
+            position={[b.position_x, b.position_y, b.position_z]}
+            onClick={e => {
+              if (placementType) return;
+              e.stopPropagation();
+              onBuildingClick?.(b, e.nativeEvent.clientX, e.nativeEvent.clientY);
+            }}
+          >
+            {isDemolishing ? (
+              <DemolishAnimation type={b.type} onDone={() => onDemolishDone?.()} />
+            ) : b.status === 'under_construction' ? (
+              <UnderConstruction type={b.type} />
+            ) : (
+              <BuildingContent type={b.type} level={b.level} damaged={b.status === 'damaged'} />
+            )}
+            {b.status === 'damaged' && !isDemolishing && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+                <ringGeometry args={[1.5, 2.0, 32]} />
+                <meshStandardMaterial color="#FF0040" emissive="#FF0040" emissiveIntensity={0.6}
+                  transparent opacity={0.25} />
+              </mesh>
+            )}
+            {/* Selection ring */}
+            {!isDemolishing && !placementType && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}
+                visible={false} // toggled via CSS overlay, ring shown via outline
+              />
+            )}
+          </group>
+        );
+      })}
 
-      {/* Building placement mode */}
-      {placementMode && onBuildingPlace && onPlacementCancel && (
-        <SimpleBuildingPlacer
-          buildingType={placementMode}
-          onPlace={onBuildingPlace}
-          onCancel={onPlacementCancel}
-        />
+      {placementType && onPlace && (
+        <PlacementGhost type={placementType} onPlace={onPlace} />
       )}
     </group>
   );
 }
 
-// GLB models are disabled - using procedural buildings only
+// Preload GLB models silently — only if files actually exist
+// (skipped in dev when models haven't been downloaded)
+if (typeof window !== 'undefined') {
+  Object.values(MODEL_PATHS).forEach(p => {
+    fetch(p, { method: 'HEAD' }).then(r => {
+      if (r.ok) try { useGLTF.preload(p); } catch {}
+    }).catch(() => {});
+  });
+}

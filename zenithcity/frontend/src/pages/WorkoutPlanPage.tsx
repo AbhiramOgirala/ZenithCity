@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Calendar, Dumbbell, Clock, ArrowRight, Target, Zap,
-  ChevronDown, ChevronUp, Play, RefreshCw,
+import {
+  Calendar, Dumbbell, Clock, Target, Zap,
+  ChevronDown, ChevronUp, Play, RefreshCw, Trophy,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
@@ -35,7 +35,7 @@ interface WorkoutPlan {
 
 const EXERCISE_EMOJIS: Record<string, string> = {
   squat: '🏋️', pushup: '💪', lunge: '🦵', plank: '🧘',
-  jumping_jack: '⚡', cardio: '🏃', running: '🏃‍♂️', walking: '🚶',
+  jumping_jack: '⚡', cardio: '🏃', running: '🏃', walking: '🚶',
 };
 
 const DAY_COLORS: Record<string, string> = {
@@ -49,20 +49,23 @@ function formatDuration(secs: number): string {
 }
 
 export default function WorkoutPlanPage() {
+  const navigate = useNavigate();
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
-  const fetchPlan = async () => {
+  const fetchPlan = async (forceRefresh = false) => {
     try {
-      const data = await api.get('/workout-plan');
+      const data = await api.get(`/workout-plan${forceRefresh ? '?force=true' : ''}`);
       setPlan(data);
-      // Auto-expand today's day
-      const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-      const todayDay = data.plan.find((d: PlanDay) => d.day === today);
-      if (todayDay) setExpandedDay(today);
-      else if (data.plan.length > 0) setExpandedDay(data.plan[0].day);
+      if (!expandedDay) {
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const todayDay = data.plan.find((d: PlanDay) => d.day === today);
+        if (todayDay) setExpandedDay(today);
+        else if (data.plan.length > 0) setExpandedDay(data.plan[0].day);
+      }
     } catch (err) {
       console.error('Failed to fetch plan:', err);
     } finally {
@@ -74,8 +77,23 @@ export default function WorkoutPlanPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchPlan();
+    await fetchPlan(true);
     setRefreshing(false);
+  };
+
+  const handleUpgrade = async () => {
+    if (!window.confirm(`Ready to upgrade your fitness level to the next tier?`)) return;
+    setUpgrading(true);
+    try {
+      await api.post('/workout-plan/upgrade', {});
+      await fetchPlan(true); // Regenerate plan for next level
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  const handleExerciseClick = (exerciseType: string) => {
+    navigate(`/workout?exercise=${exerciseType}`);
   };
 
   if (loading) {
@@ -91,14 +109,10 @@ export default function WorkoutPlanPage() {
 
   if (!plan) {
     return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <div className="glass p-8 text-center space-y-4">
-          <Target className="w-12 h-12 text-neon-cyan mx-auto" />
-          <h2 className="text-xl font-display font-bold text-white">No Plan Available</h2>
-          <p className="text-space-400 text-sm">Complete your onboarding to get a personalized workout plan.</p>
-          <Link to="/onboarding" className="btn-primary inline-flex items-center gap-2">
-            Set Up Profile <ArrowRight className="w-4 h-4" />
-          </Link>
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-space-400 font-mono text-sm">Loading your workout plan...</p>
         </div>
       </div>
     );
@@ -107,7 +121,7 @@ export default function WorkoutPlanPage() {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -115,9 +129,9 @@ export default function WorkoutPlanPage() {
         className="flex items-start justify-between"
       >
         <div>
-          <h1 className="text-2xl font-display font-bold text-white">Your Workout Plan</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold text-white">Your Workout Plan</h1>
           <p className="text-space-400 text-sm mt-0.5">
-            Personalized for <span className="text-neon-cyan font-semibold">{plan.goal}</span> • {plan.level} level
+            Personalized for <span className="text-neon-cyan font-semibold">{plan.goal}</span> &bull; {plan.level} level
           </p>
         </div>
         <button
@@ -134,21 +148,21 @@ export default function WorkoutPlanPage() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-3 gap-3"
+        className="grid grid-cols-3 gap-2 sm:gap-3"
       >
         <div className="glass-sm p-4 text-center rounded-xl">
           <Target className="w-5 h-5 text-neon-cyan mx-auto mb-2" />
-          <p className="font-display font-bold text-white text-lg">{plan.goal}</p>
+          <p className="font-display font-bold text-white text-sm sm:text-lg">{plan.goal}</p>
           <p className="text-xs text-space-500">Goal</p>
         </div>
         <div className="glass-sm p-4 text-center rounded-xl">
           <Calendar className="w-5 h-5 text-neon-orange mx-auto mb-2" />
-          <p className="font-display font-bold text-white text-lg">{plan.days_per_week}</p>
+          <p className="font-display font-bold text-white text-sm sm:text-lg">{plan.days_per_week}</p>
           <p className="text-xs text-space-500">Days / Week</p>
         </div>
         <div className="glass-sm p-4 text-center rounded-xl">
           <Zap className="w-5 h-5 text-neon-yellow mx-auto mb-2" />
-          <p className="font-display font-bold text-white text-lg capitalize">{plan.level}</p>
+          <p className="font-display font-bold text-white text-sm sm:text-lg capitalize">{plan.level}</p>
           <p className="text-xs text-space-500">Level</p>
         </div>
       </motion.div>
@@ -168,10 +182,11 @@ export default function WorkoutPlanPage() {
               transition={{ delay: i * 0.05 }}
               className={`glass overflow-hidden ${isToday ? `border border-${color}/30 ring-1 ring-${color}/20` : ''}`}
             >
-              {/* Day header */}
               <button
                 onClick={() => setExpandedDay(isExpanded ? null : day.day)}
-                className="w-full flex items-center justify-between p-4 hover:bg-white/3 transition-colors"
+                className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-white/3 transition-colors"
+                aria-expanded={isExpanded}
+                aria-controls={`day-${day.day}`}
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
@@ -182,15 +197,21 @@ export default function WorkoutPlanPage() {
                   <div className="text-left">
                     <p className={`font-display font-bold text-sm ${isToday ? `text-${color}` : 'text-white'}`}>
                       {day.day}
-                      {isToday && <span className="ml-2 text-xs font-mono bg-neon-cyan/10 text-neon-cyan px-2 py-0.5 rounded-full">TODAY</span>}
+                      {isToday && (
+                        <span className="ml-2 text-xs font-mono bg-neon-cyan/10 text-neon-cyan px-2 py-0.5 rounded-full">
+                          TODAY
+                        </span>
+                      )}
                     </p>
-                    <p className="text-xs text-space-500">{day.focus} • {day.exercises.length} exercises</p>
+                    <p className="text-xs text-space-500">{day.focus} &bull; {day.exercises.length} exercises</p>
                   </div>
                 </div>
-                {isExpanded ? <ChevronUp className="w-4 h-4 text-space-400" /> : <ChevronDown className="w-4 h-4 text-space-400" />}
+                {isExpanded
+                  ? <ChevronUp className="w-4 h-4 text-space-400" />
+                  : <ChevronDown className="w-4 h-4 text-space-400" />
+                }
               </button>
 
-              {/* Exercises */}
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -201,26 +222,31 @@ export default function WorkoutPlanPage() {
                     className="border-t border-white/5"
                   >
                     <div className="p-4 space-y-3">
+                      <p className="text-xs text-space-500 font-mono">Tap an exercise to start it</p>
+
                       {day.exercises.map((ex, j) => (
-                        <motion.div
+                        <motion.button
                           key={j}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: j * 0.05 }}
-                          className="flex items-center gap-3 p-3 glass-sm rounded-xl"
+                          onClick={() => handleExerciseClick(ex.type)}
+                          className="w-full flex items-center gap-3 p-3 glass-sm rounded-xl border border-transparent hover:border-neon-cyan/30 hover:bg-neon-cyan/5 transition-all text-left group"
                         >
                           <span className="text-2xl flex-shrink-0 w-10 text-center">
                             {EXERCISE_EMOJIS[ex.type] || '🏋️'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white">{ex.name}</p>
+                            <p className="text-sm font-semibold text-white group-hover:text-neon-cyan transition-colors">
+                              {ex.name}
+                            </p>
                             <div className="flex items-center gap-3 mt-1 text-xs text-space-400 font-mono">
                               {ex.duration_seconds ? (
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-3 h-3" /> {formatDuration(ex.duration_seconds)}
                                 </span>
                               ) : (
-                                <span>{ex.sets} × {ex.reps} reps</span>
+                                <span>{ex.sets} x {ex.reps} reps</span>
                               )}
                               {ex.rest_seconds > 0 && (
                                 <span className="text-space-500">{ex.rest_seconds}s rest</span>
@@ -228,18 +254,21 @@ export default function WorkoutPlanPage() {
                             </div>
                             <p className="text-xs text-space-500 mt-1">{ex.notes}</p>
                           </div>
-                        </motion.div>
+                          <Play className="w-4 h-4 text-space-600 group-hover:text-neon-cyan transition-colors flex-shrink-0" />
+                        </motion.button>
                       ))}
 
-                      {/* Start workout CTA */}
-                      {isToday && (
-                        <Link
-                          to="/workout"
-                          className="btn-primary w-full flex items-center justify-center gap-2 py-3"
-                        >
-                          <Play className="w-4 h-4" /> Start Today's Workout
-                        </Link>
-                      )}
+                      {isToday && (() => {
+                        const firstEx = day.exercises[0];
+                        return (
+                          <Link
+                            to={`/workout?exercise=${firstEx?.type || 'squat'}`}
+                            className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-2 shadow-lg shadow-neon-cyan/10"
+                          >
+                            <Dumbbell className="w-4 h-4" /> Start Today's Plan
+                          </Link>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -255,17 +284,17 @@ export default function WorkoutPlanPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="glass p-5 space-y-3 border-neon-orange/20"
+          className="glass p-5 space-y-3 border border-neon-orange/20"
         >
           <h3 className="font-display font-semibold text-sm uppercase tracking-widest text-white flex items-center gap-2">
             <span className="text-neon-orange text-lg">🥗</span>
-            Nutrition & Diet Guidelines
+            Nutrition &amp; Diet Guidelines
           </h3>
           <div className="space-y-3 mt-2">
-            {plan.diet_plan.map((dietTip, i) => (
+            {plan.diet_plan.map((tip, i) => (
               <div key={i} className="flex items-start gap-3 bg-space-800/30 p-3 rounded-lg border border-space-700/50">
                 <span className="text-neon-orange mt-0.5">•</span>
-                <span className="text-sm text-space-300 leading-relaxed">{dietTip}</span>
+                <span className="text-sm text-space-300 leading-relaxed">{tip}</span>
               </div>
             ))}
           </div>
@@ -292,6 +321,30 @@ export default function WorkoutPlanPage() {
               </div>
             ))}
           </div>
+        </motion.div>
+      )}
+
+      {/* Upgrade Call to Action */}
+      {plan.level !== 'advanced' && (
+        <motion.div
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           className="glass p-6 text-center space-y-4 border border-neon-cyan/20 bg-neon-cyan/5"
+        >
+          <div className="flex flex-col items-center gap-2">
+            <Trophy className="w-10 h-10 text-neon-yellow" />
+            <h3 className="text-lg font-display font-bold text-white uppercase tracking-wider">Ready for the next challenge?</h3>
+            <p className="text-sm text-space-400 max-w-md mx-auto">
+              If you have smashed this week's goals, upgrade your account to the <span className="text-neon-cyan uppercase font-bold">{plan.level === 'beginner' ? 'Intermediate' : 'Advanced'}</span> level to get more intense AI-generated plans.
+            </p>
+          </div>
+          <button 
+            onClick={handleUpgrade}
+            disabled={upgrading}
+            className="btn-primary px-8 py-3 flex items-center gap-2 mx-auto"
+          >
+            {upgrading ? <LoadingSpinner size="sm" /> : <><Zap className="w-4 h-4" /> LEVEL UP YOUR AI PLAN</>}
+          </button>
         </motion.div>
       )}
     </div>

@@ -9,16 +9,18 @@ interface User {
   technique_mastery_badge?: boolean;
   privacy_mode?: boolean;
   battle_auto_enroll?: boolean;
+  fitness_level?: string;
   fitness_goal?: string;
   height_cm?: number;
   weight_kg?: number;
   age?: number;
   gender?: string;
   health_issues?: string;
+  target_weight_kg?: number;
+  time_period_weeks?: number;
+  time_per_day_minutes?: number;
   onboarding_completed?: boolean;
-  current_streak?: number;
-  best_streak?: number;
-  last_workout_date?: string;
+  diet_preference?: string;
 }
 
 interface AuthState {
@@ -112,17 +114,8 @@ const authSlice = createSlice({
       })
       .addCase(register.rejected, (s, a) => { s.loading = false; s.error = a.payload as string; })
       .addCase(fetchProfile.fulfilled, (s, a) => {
-        if (s.user) {
-          s.user = { ...s.user, ...a.payload };
-          // Update localStorage when profile is fetched
-          localStorage.setItem('zenith_user', JSON.stringify(s.user));
-        }
-      })
-      .addCase(refreshBalance.fulfilled, (s, a) => {
-        if (s.user) {
-          s.user.points_balance = a.payload;
-          localStorage.setItem('zenith_user', JSON.stringify(s.user));
-        }
+        if (s.user) s.user = { ...s.user, ...a.payload };
+        localStorage.setItem('zenith_user', JSON.stringify(a.payload));
       });
   },
 });

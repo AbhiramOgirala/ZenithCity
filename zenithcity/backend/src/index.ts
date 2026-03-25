@@ -9,7 +9,7 @@ dotenv.config();
 
 import { initRedis } from './config/redis';
 import { scheduleCityDeclineJob } from './jobs/cityDecline';
-import { setSocketInstance } from './utils/socket';
+import { setupGeminiSocket } from './socket/geminiLive';
 
 import authRoutes from './routes/auth';
 import workoutRoutes from './routes/workouts';
@@ -20,6 +20,8 @@ import battleRoutes from './routes/battles';
 import pointsRoutes from './routes/points';
 import dashboardRoutes from './routes/dashboard';
 import feedbackRoutes from './routes/feedback';
+import workoutPlanRoutes from './routes/workoutPlan';
+import watchSyncRoutes from './routes/watchSync';
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,6 +31,7 @@ const io = new SocketServer(httpServer, {
   cors: {
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -37,7 +40,7 @@ setSocketInstance(io);
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
 // Routes
@@ -50,10 +53,15 @@ app.use('/api/battles', battleRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/workout-plan', workoutPlanRoutes);
+app.use('/api/watch', watchSyncRoutes);
+
 
 app.get('/health', (_, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // WebSocket
+setupGeminiSocket(io);
+
 io.on('connection', (socket) => {
   const userId = socket.handshake.auth.userId;
   if (userId) {

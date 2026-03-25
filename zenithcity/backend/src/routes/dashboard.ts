@@ -12,7 +12,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
     const twelveWeeksAgo = new Date(Date.now() - 12 * 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // All queries in parallel
-    const [workoutCount, weeklyPoints, cityData, userRankData, battles] = await Promise.all([
+    const [workoutCount, weeklyPoints, cityData, userRankData, battles, recentWorkouts] = await Promise.all([
       supabase
         .from('workout_sessions')
         .select('id', { count: 'exact' })
@@ -45,6 +45,14 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
         .gte('ends_at', new Date().toISOString())
         .order('starts_at')
         .limit(3),
+
+      supabase
+        .from('workout_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(5),
     ]);
 
     // Calculate weekly points for last 12 weeks
@@ -88,10 +96,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       points_balance: viewerPoints,
       points_to_next_rank: pointsToNextRank,
       upcoming_battles: battles.data || [],
-      current_streak: streakUser?.current_streak || 0,
-      best_streak: streakUser?.best_streak || 0,
-      last_workout_date: streakUser?.last_workout_date || null,
-      onboarding_completed: streakUser?.onboarding_completed || false,
+      recent_workouts: recentWorkouts.data || [],
     });
   } catch (err) {
     console.error('Dashboard error:', err);

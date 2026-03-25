@@ -155,7 +155,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign({ id: userId, email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
-      user: { id: userId, email, username, points_balance: 0 },
+      user: { id: userId, email, username, onboarding_completed: false },
       token,
     });
   } catch (err: any) {
@@ -189,7 +189,10 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign({ id: user[0].id, email: user[0].email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
-      user: { id: user[0].id, email: user[0].email, username: user[0].username, points_balance: user[0].points_balance || 0 },
+      user: { 
+        id: user.id, email: user.email, username: user.username, 
+        onboarding_completed: user.onboarding_completed || false 
+      },
       token,
     });
   } catch (err) {
@@ -203,7 +206,7 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('id, email, username, privacy_mode, battle_auto_enroll, technique_mastery_badge, points_balance, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes, onboarding_completed, current_streak, best_streak, last_workout_date, created_at')
+      .select('*, onboarding_completed')
       .eq('id', req.user!.id)
       .single();
 
@@ -221,7 +224,14 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
 // PUT /api/auth/profile
 router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes } = req.body;
+    const {
+      username, privacy_mode, battle_auto_enroll,
+      fitness_goal, fitness_level,
+      height_cm, weight_kg, age, gender, health_issues,
+      target_weight_kg, time_period_weeks, time_per_day_minutes,
+      onboarding_completed, diet_preference
+    } = req.body;
+    
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
     if (username) {
@@ -231,9 +241,13 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
       }
       updates.username = username;
     }
+    
     if (privacy_mode !== undefined) updates.privacy_mode = privacy_mode;
     if (battle_auto_enroll !== undefined) updates.battle_auto_enroll = battle_auto_enroll;
-    if (fitness_goal !== undefined) updates.fitness_goal = fitness_goal;
+    
+    // Add fitness metrics
+    if (fitness_goal) updates.fitness_goal = fitness_goal;
+    if (fitness_level) updates.fitness_level = fitness_level;
     if (height_cm !== undefined) updates.height_cm = height_cm;
     if (weight_kg !== undefined) updates.weight_kg = weight_kg;
     if (age !== undefined) updates.age = age;
@@ -242,12 +256,27 @@ router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
     if (target_weight_kg !== undefined) updates.target_weight_kg = target_weight_kg;
     if (time_period_weeks !== undefined) updates.time_period_weeks = time_period_weeks;
     if (time_per_day_minutes !== undefined) updates.time_per_day_minutes = time_per_day_minutes;
+    if (onboarding_completed !== undefined) updates.onboarding_completed = onboarding_completed;
+    if (diet_preference) updates.diet_preference = diet_preference;
+
+    // Check for first-time onboarding completion reward
+    if (onboarding_completed === true) {
+      const { data: currentUser } = await supabase
+        .from('users')
+        .select('onboarding_completed, points_balance')
+        .eq('id', req.user!.id)
+        .single();
+        
+      if (currentUser && !currentUser.onboarding_completed) {
+        updates.points_balance = (currentUser.points_balance || 0) + 100;
+      }
+    }
 
     const { data: user, error } = await supabase
       .from('users')
       .update(updates)
       .eq('id', req.user!.id)
-      .select('id, email, username, privacy_mode, battle_auto_enroll, fitness_goal, height_cm, weight_kg, age, gender, health_issues, target_weight_kg, time_period_weeks, time_per_day_minutes, points_balance')
+      .select('*, onboarding_completed')
       .single();
 
     if (error) throw error;

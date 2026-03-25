@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, Square, Zap, Camera, CameraOff, MapPin, CheckCircle,
@@ -55,10 +56,13 @@ function calcGPSDistance(coords: Array<{ latitude: number; longitude: number }>)
 
 export default function WorkoutPage() {
   const dispatch = useDispatch<AppDispatch>();
+  const [searchParams] = useSearchParams();
   const { active_session, loading, last_completed } = useSelector((s: RootState) => s.workout);
 
-  const [selectedExercise, setSelectedExercise] = useState('squat');
-  const [todayExercises, setTodayExercises] = useState<any[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState(() => {
+    const param = searchParams.get('exercise');
+    return EXERCISE_TYPES.find(e => e.id === param) ? param! : 'squat';
+  });
   const [cameraEnabled, setCameraEnabled]   = useState(false);
   const [cameraStream, setCameraStream]     = useState<MediaStream | null>(null);
   const [gpsEnabled, setGpsEnabled]         = useState(false);
@@ -148,14 +152,14 @@ export default function WorkoutPage() {
   // Points: 0 without camera (except GPS)
   const estimatedPoints = useCallback(() => {
     if (isGPS)             return Math.floor(gpsDistance * 50);
-    if (!cameraEnabled)    return 0;
+    if (!cameraEnabled)    return Math.floor((elapsedSeconds / 60) * 5); // Half of cardio points
     if (isStrength)        return aiStats.validReps * 2;
     return Math.floor((elapsedSeconds / 60) * 10);
   }, [cameraEnabled, isStrength, isGPS, aiStats.validReps, elapsedSeconds, gpsDistance]);
 
   const handleStartWorkout = async () => {
     if (!cameraEnabled && !isGPS) {
-      dispatch(addToast({ type: 'warning', message: '📷 No camera = no points. Enable AI camera to earn points.' }));
+      dispatch(addToast({ type: 'warning', message: '📷 Manual mode (no AI) will earn 5 pts/min only.' }));
     }
     const result = await dispatch(startWorkout({
       exercise_type: selectedExercise,
@@ -254,13 +258,18 @@ export default function WorkoutPage() {
   const pts = estimatedPoints();
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
-      {/* Celebration confetti */}
-      <Celebration active={showCelebration} />
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-display font-bold text-white">Workout</h1>
-        <p className="text-space-400 text-sm mt-0.5">AI verifies your form — only correct reps earn points</p>
+        <h1 className="text-xl sm:text-2xl font-display font-bold text-white uppercase tracking-wider">
+          {searchParams.get('exercise') ? 'Planned Session' : 'Active Workout'}
+        </h1>
+        <p className="text-space-400 text-xs sm:text-sm mt-0.5">
+          {searchParams.get('exercise') 
+            ? `Targeting your ${exerciseMeta.label} for your weekly plan`
+            : 'AI verifies your form — only correct reps earn points'
+          }
+        </p>
       </div>
 
       {/* Workout completed card */}
@@ -298,13 +307,13 @@ export default function WorkoutPage() {
         )}
       </AnimatePresence>
 
-      <div className="grid lg:grid-cols-5 gap-5">
+      <div className="grid lg:grid-cols-5 gap-4 sm:gap-5">
         {/* ─── LEFT: Controls ─── */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-4" role="region" aria-label="Workout controls">
 
           {/* Exercise selector (only before session starts) */}
           <AnimatePresence>
-            {!active_session && (
+            {!active_session && !searchParams.get('exercise') && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -314,20 +323,23 @@ export default function WorkoutPage() {
                 <h2 className="font-display text-xs font-semibold text-white uppercase tracking-widest mb-3">
                   Choose Exercise {todayExercises.length > 0 ? "(Today's Plan)" : "(Free Play)"}
                 </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {(todayExercises.length > 0 ? todayExercises : EXERCISE_TYPES).map(ex => (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Exercise type">
+                  {EXERCISE_TYPES.map(ex => (
                     <button
                       key={ex.id}
                       onClick={() => setSelectedExercise(ex.id)}
-                      className={`p-3 rounded-xl border text-center transition-all duration-200 ${
+                      role="radio"
+                      aria-checked={selectedExercise === ex.id}
+                      aria-label={`${ex.label}: ${ex.desc}`}
+                      className={`p-2 sm:p-3 rounded-xl border text-center transition-all duration-200 ${
                         selectedExercise === ex.id
                           ? `border-space-400/60 bg-space-700/60 text-white ring-1 ring-neon-cyan/30`
                           : 'border-space-700/40 text-space-400 hover:border-space-500 hover:text-white'
                       }`}
                     >
-                      <div className="text-xl mb-1">{ex.emoji}</div>
-                      <p className="text-xs font-semibold leading-tight">{ex.label}</p>
-                      <p className="text-xs text-space-500 mt-0.5 font-mono leading-tight">{ex.desc}</p>
+                      <div className="text-lg sm:text-xl mb-1" aria-hidden="true">{ex.emoji}</div>
+                      <p className="text-[10px] sm:text-xs font-semibold leading-tight">{ex.label}</p>
+                      <p className="text-[10px] sm:text-xs text-space-500 mt-0.5 font-mono leading-tight hidden sm:block">{ex.desc}</p>
                     </button>
                   ))}
                 </div>
@@ -367,12 +379,12 @@ export default function WorkoutPage() {
                   </div>
 
                   {/* Big timer */}
-                  <div className="text-center">
+                  <div className="text-center" role="timer" aria-label={`Elapsed time: ${formatTime(elapsedSeconds)}`} aria-live="off">
                     <motion.div
                       key={Math.floor(elapsedSeconds / 60)}
                       initial={{ scale: 1.05 }}
                       animate={{ scale: 1 }}
-                      className="font-display text-7xl font-black text-white tabular-nums"
+                      className="font-display text-5xl sm:text-7xl font-black text-white tabular-nums"
                     >
                       {formatTime(elapsedSeconds)}
                     </motion.div>
@@ -380,18 +392,18 @@ export default function WorkoutPage() {
                   </div>
 
                   {/* Stats row */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="glass-sm p-3 text-center rounded-xl">
-                      <p className="text-2xl font-display font-bold text-white">{aiStats.totalReps}</p>
-                      <p className="text-xs text-space-500 font-mono">Total Reps</p>
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3" role="group" aria-label="Workout statistics">
+                    <div className="glass-sm p-2 sm:p-3 text-center rounded-xl" aria-label={`Total reps: ${aiStats.totalReps}`}>
+                      <p className="text-xl sm:text-2xl font-display font-bold text-white">{aiStats.totalReps}</p>
+                      <p className="text-[10px] sm:text-xs text-space-500 font-mono">Total Reps</p>
                     </div>
-                    <div className="glass-sm p-3 text-center rounded-xl border border-neon-green/20">
-                      <p className="text-2xl font-display font-bold text-neon-green">{aiStats.validReps}</p>
-                      <p className="text-xs text-neon-green/70 font-mono">Valid Reps</p>
+                    <div className="glass-sm p-2 sm:p-3 text-center rounded-xl border border-neon-green/20" aria-label={`Valid reps: ${aiStats.validReps}`}>
+                      <p className="text-xl sm:text-2xl font-display font-bold text-neon-green">{aiStats.validReps}</p>
+                      <p className="text-[10px] sm:text-xs text-neon-green/70 font-mono">Valid Reps</p>
                     </div>
-                    <div className={`glass-sm p-3 text-center rounded-xl border ${pts > 0 ? 'border-neon-yellow/20' : 'border-space-700/30'}`}>
-                      <p className={`text-2xl font-display font-bold ${pts > 0 ? 'text-neon-yellow' : 'text-space-500'}`}>{pts}</p>
-                      <p className="text-xs text-space-500 font-mono">Est. Pts</p>
+                    <div className={`glass-sm p-2 sm:p-3 text-center rounded-xl border ${pts > 0 ? 'border-neon-yellow/20' : 'border-space-700/30'}`} aria-label={`Estimated points: ${pts}`}>
+                      <p className={`text-xl sm:text-2xl font-display font-bold ${pts > 0 ? 'text-neon-yellow' : 'text-space-500'}`}>{pts}</p>
+                      <p className="text-[10px] sm:text-xs text-space-500 font-mono">Est. Pts</p>
                     </div>
                   </div>
 
@@ -420,7 +432,7 @@ export default function WorkoutPage() {
                   {!cameraEnabled && !isGPS && (
                     <div className="flex items-center gap-2 text-xs text-neon-orange p-2.5 bg-neon-orange/8 border border-neon-orange/20 rounded-lg">
                       <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                      Camera off — no points will be earned this session
+                      Manual mode — partial points (5 pts/min) will be earned
                     </div>
                   )}
 
@@ -477,7 +489,7 @@ export default function WorkoutPage() {
                 >
                   {loading
                     ? <div className="w-4 h-4 border-2 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
-                    : <><Play className="w-4 h-4" />Start Workout</>
+                    : <><Play className="w-4 h-4" />Start {searchParams.get('exercise') ? exerciseMeta.label : 'Workout'}</>
                   }
                 </button>
               </div>
@@ -503,12 +515,12 @@ export default function WorkoutPage() {
             )}
           </div>
 
-          <WorkoutHistory />
+          {!searchParams.get('exercise') && <WorkoutHistory />}
         </div>
 
         {/* ─── RIGHT: Camera / Pose Detection ─── */}
-        <div className="lg:col-span-2 space-y-3">
-          <div className="glass overflow-hidden rounded-2xl" style={{ minHeight: 340 }}>
+        <div className="lg:col-span-2 space-y-3" role="region" aria-label="Camera and AI detection">
+          <div className="glass overflow-hidden rounded-2xl" style={{ minHeight: 280 }}>
             {cameraEnabled && cameraStream ? (
               <PoseDetector
                 stream={cameraStream}
@@ -517,7 +529,7 @@ export default function WorkoutPage() {
                 onStatsUpdate={setAiStats}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center gap-4 p-8 h-full min-h-[340px]">
+              <div className="flex flex-col items-center justify-center gap-4 p-6 sm:p-8 h-full min-h-[280px]">
                 <div className="w-16 h-16 rounded-2xl bg-space-700/50 border border-space-600/30 flex items-center justify-center">
                   <CameraOff className="w-8 h-8 text-space-500" />
                 </div>
@@ -527,12 +539,6 @@ export default function WorkoutPage() {
                     Enable camera so MediaPipe AI can analyze your joint angles and verify each rep in real-time
                   </p>
                 </div>
-                {!active_session && !isGPS && (
-                  <button onClick={enableCamera} className="btn-primary text-xs px-5 py-2.5 flex items-center gap-2">
-                    <Camera className="w-3.5 h-3.5" />
-                    Enable Camera
-                  </button>
-                )}
                 {isGPS && (
                   <div className="text-center">
                     <MapPin className="w-6 h-6 text-neon-green mx-auto mb-2" />
@@ -566,7 +572,7 @@ export default function WorkoutPage() {
                 <p className={cameraEnabled ? 'text-neon-green' : 'text-neon-orange'}>
                   {cameraEnabled
                     ? 'AI active — joint angles verified in real-time'
-                    : 'Camera required to earn points (no manual mode)'
+                    : 'Manual mode — reduced points for unverified forms'
                   }
                 </p>
               </div>

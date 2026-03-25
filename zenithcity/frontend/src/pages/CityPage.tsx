@@ -1,22 +1,21 @@
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import {
   Building2, Plus, ArrowUp, Wrench, Zap, Shield, Map,
-  Layers, AlertTriangle, Lock, CheckCircle, Clock
+  Layers, AlertTriangle, Lock, Clock, Sun, Moon, Trash2, X, MousePointer
 } from 'lucide-react';
 import {
   fetchCity, constructBuilding, upgradeBuilding,
-  repairBuilding, setBuildingPanelOpen, moveBuilding
+  repairBuilding, deleteBuilding, setBuildingPanelOpen
 } from '../store/slices/citySlice';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { RootState, AppDispatch } from '../store';
 import City3D from '../components/City3D';
-import SkySystem from '../components/SkySystem';
-import DynamicLighting from '../components/DynamicLighting';
+import CitySky from '../components/CitySky';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import * as THREE from 'three';
 
@@ -27,6 +26,11 @@ const BUILDING_TYPES = [
   { id: 'office',    label: 'Office',    cost: 1000, emoji: '🏬', desc: 'Commercial hub' },
   { id: 'stadium',   label: 'Stadium',   cost: 5000, emoji: '🏟️', desc: 'Epic venue' },
 ];
+
+interface SelectedBuilding {
+  id: string; type: string; level: number; status: string; health: number;
+  screenX: number; screenY: number;
+}
 
 // Auto-complete buildings whose timer has expired
 function useAutoCompleteBuildings() {
@@ -84,55 +88,18 @@ export default function CityPage() {
   const [selectedType, setSelectedType] = useState('house');
   const [activeTab, setActiveTab] = useState<'build' | 'buildings'>('build');
   const [constructing, setConstructing] = useState(false);
-  const [placementMode, setPlacementMode] = useState<string | null>(null);
-  const [isDragMode, setIsDragMode] = useState(false);
-  
-  // Sky system state
-  const [lightingData, setLightingData] = useState({
-    timeOfDay: new Date().getHours() + new Date().getMinutes() / 60,
-    sunIntensity: 1,
-    moonIntensity: 0,
-    sunPosition: new THREE.Vector3(15, 30, 15),
-    moonPosition: new THREE.Vector3(-15, -10, -15)
-  });
+  const [placementType, setPlacementType] = useState<string | null>(null);
+  const [selectedBuilding, setSelectedBuilding] = useState<SelectedBuilding | null>(null);
+  const [demolishingId, setDemolishingId] = useState<string | null>(null);
+  const [lightMode, setLightMode] = useState<'auto' | 'day' | 'night'>('auto');
 
-  const handleLightingChange = (timeOfDay: number, sunIntensity: number, moonIntensity: number) => {
-    // Throttle updates to reduce jittering - only update if values changed significantly
-    const timeDiff = Math.abs(timeOfDay - lightingData.timeOfDay);
-    const sunDiff = Math.abs(sunIntensity - lightingData.sunIntensity);
-    const moonDiff = Math.abs(moonIntensity - lightingData.moonIntensity);
-    
-    // Only update if there's a significant change (reduces unnecessary re-renders)
-    if (timeDiff < 0.01 && sunDiff < 0.01 && moonDiff < 0.01) {
-      return;
-    }
-    
-    // Calculate sun position based on time
-    const sunAngle = ((timeOfDay - 6) / 12) * Math.PI;
-    const sunElevation = Math.sin(sunAngle) * 0.8;
-    const sunAzimuth = sunAngle - Math.PI / 2;
-    
-    const sunX = Math.cos(sunAzimuth) * Math.cos(sunElevation) * 50;
-    const sunY = Math.sin(sunElevation) * 50;
-    const sunZ = Math.sin(sunAzimuth) * Math.cos(sunElevation) * 50;
-    
-    // Calculate moon position (opposite to sun)
-    const moonAngle = ((timeOfDay - 18) / 12) * Math.PI;
-    const moonElevation = Math.sin(moonAngle) * 0.6;
-    const moonAzimuth = moonAngle - Math.PI / 2;
-    
-    const moonX = Math.cos(moonAzimuth) * Math.cos(moonElevation) * 45;
-    const moonY = Math.sin(moonElevation) * 45;
-    const moonZ = Math.sin(moonAzimuth) * Math.cos(moonElevation) * 45;
-    
-    setLightingData({
-      timeOfDay,
-      sunIntensity,
-      moonIntensity,
-      sunPosition: new THREE.Vector3(sunX, Math.max(sunY, -10), sunZ),
-      moonPosition: new THREE.Vector3(moonX, Math.max(moonY, -8), moonZ)
-    });
-  };
+  const systemHour = new Date().getHours();
+  const isDay = lightMode === 'day' || (lightMode === 'auto' && systemHour >= 6 && systemHour < 20);
+
+  const ambientIntensity = isDay ? 0.55 : 0.08;
+  const dirLightIntensity = isDay ? 2.2 : 0.25;
+  const dirLightColor = isDay ? '#fff8e8' : '#6677cc';
+  const dirLightPos: [number, number, number] = isDay ? [60, 55, -80] : [-55, 60, -75];
 
   useAutoCompleteBuildings();
 
@@ -142,26 +109,25 @@ export default function CityPage() {
   const selectedCost = BUILDING_TYPES.find(b => b.id === selectedType)?.cost ?? 0;
   const canAffordSelected = balance >= selectedCost;
 
-  const handleConstruct = async () => {
+  // Enter placement mode — deduct points and show ghost
+  const handleStartPlacement = () => {
     if (!canAffordSelected) {
-      const deficit = selectedCost - balance;
-      dispatch(addToast({ type: 'error', message: `Need ${deficit} more points to build this!` }));
+      dispatch(addToast({ type: 'error', message: `Need ${selectedCost - balance} more points!` }));
       return;
     }
-
-    // Enter placement mode instead of auto-placing
-    setPlacementMode(selectedType);
+    setPlacementType(selectedType);
+    dispatch(setBuildingPanelOpen(false));
   };
 
-  const handleBuildingPlace = async (position: { x: number, z: number }) => {
-    if (!placementMode) return;
-
+  // Called when user clicks on the ground in placement mode
+  const handlePlace = useCallback(async (x: number, z: number) => {
+    if (!placementType) return;
+    setPlacementType(null);
     setConstructing(true);
-    setPlacementMode(null);
 
     const result = await dispatch(constructBuilding({
-      type: placementMode,
-      position_x: position.x,
+      type: placementType,
+      position_x: x,
       position_y: 0,
       position_z: position.z,
     }));
@@ -169,15 +135,13 @@ export default function CityPage() {
     setConstructing(false);
 
     if (result.meta.requestStatus === 'fulfilled') {
-      const bt = BUILDING_TYPES.find(b => b.id === placementMode)!;
-      dispatch(addToast({ type: 'success', message: `${bt.emoji} ${bt.label} construction started!` }));
-      // Sync the updated balance from server
+      const bt = BUILDING_TYPES.find(b => b.id === placementType)!;
+      dispatch(addToast({ type: 'success', message: `${bt.emoji} ${bt.label} placed!` }));
       dispatch(fetchProfile());
     } else {
-      const msg = (result.payload as string) || 'Construction failed';
-      dispatch(addToast({ type: 'error', message: msg }));
+      dispatch(addToast({ type: 'error', message: (result.payload as string) || 'Construction failed' }));
     }
-  };
+  }, [placementType, dispatch]);
 
   const handlePlacementCancel = () => {
     setPlacementMode(null);
@@ -221,6 +185,35 @@ export default function CityPage() {
     }
   };
 
+  const handleDelete = async (buildingId: string, type: string) => {
+    const result = await dispatch(deleteBuilding(buildingId));
+    if (result.meta.requestStatus === 'fulfilled') {
+      dispatch(addToast({ type: 'success', message: `🗑️ ${type} demolished!` }));
+    } else {
+      dispatch(addToast({ type: 'error', message: (result.payload as string) || 'Delete failed' }));
+    }
+  };
+
+  const handleBuildingClick = useCallback((b: any, screenX: number, screenY: number) => {
+    if (placementType) return;
+    setSelectedBuilding({ id: b.id, type: b.type, level: b.level, status: b.status, health: b.health, screenX, screenY });
+  }, [placementType]);
+
+  const handleDemolishStart = () => {
+    if (!selectedBuilding) return;
+    setDemolishingId(selectedBuilding.id);
+    setSelectedBuilding(null);
+  };
+
+  const handleDemolishDone = useCallback(async () => {
+    if (!demolishingId) return;
+    const id = demolishingId;
+    setDemolishingId(null);
+    const b = city?.buildings.find(b => b.id === id);
+    await dispatch(deleteBuilding(id));
+    dispatch(addToast({ type: 'success', message: `💥 ${b?.type ?? 'Building'} demolished!` }));
+  }, [demolishingId, city, dispatch]);
+
   const completedBuildings    = city?.buildings?.filter(b => b.status === 'completed') || [];
   const constructingBuildings = city?.buildings?.filter(b => b.status === 'under_construction') || [];
   const damagedBuildings      = city?.buildings?.filter(b => b.status === 'damaged') || [];
@@ -232,56 +225,47 @@ export default function CityPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 3D View */}
-      <div className="flex-1 relative min-h-0" style={{ minHeight: '420px' }}>
+      <div className="flex-1 relative min-h-0" style={{ minHeight: '320px' }}>
         <Canvas
           camera={{ position: [22, 18, 22], fov: 48 }}
-          style={{ 
-            background: 'transparent',
-            cursor: placementMode ? 'crosshair' : isDragMode ? 'grab' : 'default'
-          }}
+          style={{ background: '#020818' }}
           shadows
           dpr={[1, 2]} // Limit device pixel ratio for performance
           performance={{ min: 0.5 }} // Allow frame rate to drop to maintain performance
         >
           <Suspense fallback={null}>
-            {/* Sky system with sun, moon, and dynamic colors */}
-            <SkySystem onLightingChange={handleLightingChange} />
-            
-            {/* Dynamic lighting that responds to time of day */}
-            <DynamicLighting 
-              timeOfDay={lightingData.timeOfDay}
-              sunIntensity={lightingData.sunIntensity}
-              moonIntensity={lightingData.moonIntensity}
-              sunPosition={lightingData.sunPosition}
-              moonPosition={lightingData.moonPosition}
+            <CitySky isDay={isDay} />
+            <ambientLight intensity={ambientIntensity} />
+            <hemisphereLight args={[isDay ? '#87ceeb' : '#0a1628', isDay ? '#4a7c23' : '#1a2a4a', isDay ? 0.9 : 0.3]} />
+            <directionalLight
+              position={dirLightPos} intensity={dirLightIntensity} color={dirLightColor} castShadow
+              shadow-mapSize={[2048, 2048]}
+              shadow-camera-far={120}
+              shadow-camera-left={-40} shadow-camera-right={40}
+              shadow-camera-top={40}  shadow-camera-bottom={-40}
             />
-            
-            {/* City */}
-            <City3D 
-              buildings={city?.buildings || []} 
+            <pointLight position={[-18, 12, -12]} color="#00F5FF" intensity={isDay ? 0.4 : 1.8} distance={50} />
+            <pointLight position={[18, 8, 12]}    color="#B24BF3" intensity={isDay ? 0.3 : 1.2} distance={45} />
+            <City3D
+              buildings={city?.buildings || []}
               territorySize={city?.territory_size || 100}
-              timeOfDay={lightingData.timeOfDay}
-              sunIntensity={lightingData.sunIntensity}
-              placementMode={placementMode}
-              isDragMode={isDragMode}
-              onBuildingPlace={handleBuildingPlace}
-              onBuildingMove={handleBuildingMove}
-              onPlacementCancel={handlePlacementCancel}
+              placementType={placementType}
+              onPlace={handlePlace}
+              onBuildingClick={handleBuildingClick}
+              demolishingId={demolishingId}
+              onDemolishDone={handleDemolishDone}
             />
-            
-            {/* Camera controls */}
-            <OrbitControls 
-              enablePan={!placementMode && !isDragMode} 
-              enabled={!placementMode && !isDragMode}
-              maxPolarAngle={Math.PI / 2.1} 
-              minDistance={5} 
-              maxDistance={60} 
+            <OrbitControls
+              enablePan={!placementType}
+              enableRotate={!placementType}
+              enableZoom
+              maxPolarAngle={Math.PI / 2.1} minDistance={5} maxDistance={60}
             />
           </Suspense>
         </Canvas>
 
         {/* Stats overlay */}
-        <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none">
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
           <div className="glass-sm px-3 py-2 flex items-center gap-2 text-xs font-mono">
             <Building2 className="w-3.5 h-3.5 text-neon-cyan" />
             <span className="text-white font-bold">{completedBuildings.length}</span>
@@ -301,34 +285,146 @@ export default function CityPage() {
               {city?.decline_active ? 'Declining — workout now!' : 'Healthy'}
             </span>
           </div>
-          {/* Time and lighting info */}
-          <div className="glass-sm px-3 py-2 flex items-center gap-2 text-xs font-mono">
-            <Clock className="w-3.5 h-3.5 text-neon-yellow" />
-            <span className="text-white font-bold">
-              {Math.floor(lightingData.timeOfDay)}:{String(Math.floor((lightingData.timeOfDay % 1) * 60)).padStart(2, '0')}
-            </span>
-            <span className="text-space-400">
-              {lightingData.sunIntensity > 0.1 ? '☀️' : lightingData.moonIntensity > 0.1 ? '🌙' : '🌃'}
-            </span>
+          {/* Day / Night toggle */}
+          <div className="glass-sm px-2 py-1.5 flex items-center gap-1 pointer-events-auto">
+            {(['auto', 'day', 'night'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setLightMode(mode)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono transition-all ${
+                  lightMode === mode
+                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
+                    : 'text-space-400 hover:text-white'
+                }`}
+              >
+                {mode === 'day' && <Sun className="w-3 h-3" />}
+                {mode === 'night' && <Moon className="w-3 h-3" />}
+                {mode === 'auto' && <span>⏱</span>}
+                {mode}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Balance overlay */}
-        <div className="absolute top-4 right-4 pointer-events-none">
+        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 pointer-events-none">
           <div className="glass-sm px-3 py-2 flex items-center gap-2 text-xs font-mono">
             <Zap className="w-3.5 h-3.5 text-neon-yellow" />
             <span className="text-neon-yellow font-bold">{balance.toLocaleString()} pts</span>
           </div>
         </div>
 
+        {/* Placement mode banner */}
+        <AnimatePresence>
+          {placementType && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
+            >
+              <div className="glass px-6 py-3 rounded-2xl border border-neon-cyan/40 flex items-center gap-3">
+                <MousePointer className="w-4 h-4 text-neon-cyan animate-pulse" />
+                <span className="text-neon-cyan font-mono text-sm font-semibold">
+                  Click to place {BUILDING_TYPES.find(b => b.id === placementType)?.emoji} {placementType}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Cancel placement button */}
+        <AnimatePresence>
+          {placementType && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={() => setPlacementType(null)}
+              className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neon-pink/15 border border-neon-pink/40 text-neon-pink font-mono text-sm hover:bg-neon-pink/25 transition-all pointer-events-auto"
+            >
+              <X className="w-4 h-4" /> Cancel
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Building info popup on click */}
+        <AnimatePresence>
+          {selectedBuilding && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.85, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.85, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="absolute z-20 pointer-events-auto"
+              style={{
+                left: Math.min(selectedBuilding.screenX - 80, window.innerWidth - 200),
+                top: Math.max(selectedBuilding.screenY - 160, 8),
+              }}
+            >
+              <div className="glass border border-white/10 rounded-2xl p-4 w-48 shadow-2xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{BUILDING_TYPES.find(t => t.id === selectedBuilding.type)?.emoji}</span>
+                    <div>
+                      <p className="text-white font-semibold text-sm capitalize">{selectedBuilding.type}</p>
+                      <p className="text-space-400 text-xs font-mono">Lvl {selectedBuilding.level}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedBuilding(null)} className="text-space-500 hover:text-white transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-space-400">Health</span>
+                    <span className={selectedBuilding.health > 60 ? 'text-neon-green' : selectedBuilding.health > 30 ? 'text-neon-yellow' : 'text-neon-pink'}>
+                      {selectedBuilding.health}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1 bg-space-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${selectedBuilding.health}%`,
+                        background: selectedBuilding.health > 60 ? '#39ff14' : selectedBuilding.health > 30 ? '#ffd93d' : '#ff2d55',
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-space-400">Status</span>
+                    <span className={
+                      selectedBuilding.status === 'completed' ? 'text-neon-green' :
+                      selectedBuilding.status === 'under_construction' ? 'text-neon-yellow' : 'text-neon-pink'
+                    }>
+                      {selectedBuilding.status === 'under_construction' ? 'Building...' :
+                       selectedBuilding.status === 'damaged' ? 'Damaged' : 'Active'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDemolishStart}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-neon-pink/10 border border-neon-pink/40 text-neon-pink text-xs font-semibold hover:bg-neon-pink/20 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Demolish
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Open panel button */}
-        <button
-          onClick={() => dispatch(setBuildingPanelOpen(!buildingPanelOpen))}
-          className="absolute bottom-4 right-4 btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          {buildingPanelOpen ? 'Close' : 'Manage City'}
-        </button>
+        {!placementType && (
+          <button
+            onClick={() => dispatch(setBuildingPanelOpen(!buildingPanelOpen))}
+            className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 btn-primary flex items-center gap-2 text-xs sm:text-sm"
+            aria-label={buildingPanelOpen ? 'Close city management panel' : 'Open city management panel'}
+            aria-expanded={buildingPanelOpen}
+          >
+            <Plus className="w-4 h-4" />
+            {buildingPanelOpen ? 'Close' : 'Manage City'}
+          </button>
+        )}
       </div>
 
       {/* Management panel */}
@@ -340,7 +436,7 @@ export default function CityPage() {
             exit={{ height: 0, opacity: 0 }}
             className="border-t border-white/5 overflow-hidden flex-shrink-0"
           >
-            <div className="p-4 glass" style={{ borderRadius: 0 }}>
+            <div className="p-3 sm:p-4 glass" style={{ borderRadius: 0 }}>
               {/* Tabs */}
               <div className="flex gap-1 glass-sm p-1 rounded-xl w-fit mb-4">
                 {[
@@ -420,8 +516,8 @@ export default function CityPage() {
                     </div>
 
                     <button
-                      onClick={handleConstruct}
-                      disabled={constructing || !canAffordSelected || placementMode !== null}
+                      onClick={handleStartPlacement}
+                      disabled={constructing || !canAffordSelected}
                       className={`px-6 py-3 rounded-xl font-display font-semibold text-sm uppercase tracking-widest flex items-center gap-2 transition-all ${
                         canAffordSelected && !placementMode
                           ? 'btn-primary'
@@ -430,9 +526,9 @@ export default function CityPage() {
                     >
                       {constructing
                         ? <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                        : <Plus className="w-4 h-4" />
+                        : <MousePointer className="w-4 h-4" />
                       }
-                      {placementMode ? 'Click to place' : canAffordSelected ? 'Build' : `Need ${(selectedCost - balance).toLocaleString()} more pts`}
+                      {canAffordSelected ? 'Place' : `Need ${(selectedCost - balance).toLocaleString()} more pts`}
                     </button>
                   </div>
 
@@ -533,6 +629,13 @@ export default function CityPage() {
                             }`}
                           >
                             <Wrench className="w-3 h-3" /> Repair
+                          </button>
+                          <button
+                            onClick={() => handleDelete(b.id, b.type)}
+                            className="text-xs px-2 py-1.5 rounded-lg flex items-center gap-1 bg-space-800 border border-space-700 text-space-500 hover:border-neon-pink/40 hover:text-neon-pink transition-all"
+                            title="Demolish"
+                          >
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       ))}

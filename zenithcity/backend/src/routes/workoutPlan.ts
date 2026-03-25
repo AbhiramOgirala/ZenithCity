@@ -1,300 +1,267 @@
 import { Router, Response } from 'express';
-import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { supabase } from '../config/database';
-import { WorkoutPlan, WorkoutPlanDay } from '../types';
+import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { cache } from '../config/redis';
 import { GoogleGenAI } from '@google/genai';
 
 const router = Router();
 
-/**
- * Rule-based workout plan generator.
- * Creates a personalized plan based on user's fitness goal, age, and weight.
- */
-function generateWorkoutPlan(
-  goal: string,
-  age: number | null,
-  weight_kg: number | null,
-  height_cm: number | null
-): WorkoutPlan {
-  const userAge = age || 25;
-  const isYoung = userAge < 30;
-  const isSenior = userAge > 50;
+// Hardcoded plan templates keyed by goal + level
+// Used as fallback when Gemini/AI fails or offline
+const PLAN_TEMPLATES: Record<string, Record<string, any>> = {
+  'weight_loss': {
+    beginner: { days: 3, exercises: ['jumping_jack', 'squat', 'lunge'] },
+    intermediate: { days: 4, exercises: ['jumping_jack', 'squat', 'lunge', 'pushup'] },
+    advanced: { days: 5, exercises: ['jumping_jack', 'squat', 'lunge', 'pushup', 'plank'] },
+  },
+  'muscle_gain': {
+    beginner: { days: 3, exercises: ['pushup', 'squat', 'lunge'] },
+    intermediate: { days: 4, exercises: ['pushup', 'squat', 'lunge', 'plank'] },
+    advanced: { days: 5, exercises: ['pushup', 'squat', 'lunge', 'plank', 'jumping_jack'] },
+  },
+  'endurance': {
+    beginner: { days: 3, exercises: ['cardio', 'jumping_jack', 'plank'] },
+    intermediate: { days: 4, exercises: ['cardio', 'jumping_jack', 'plank', 'squat'] },
+    advanced: { days: 5, exercises: ['cardio', 'jumping_jack', 'plank', 'squat', 'lunge'] },
+  },
+  'general_fitness': {
+    beginner: { days: 3, exercises: ['squat', 'pushup', 'plank'] },
+    intermediate: { days: 4, exercises: ['squat', 'pushup', 'plank', 'jumping_jack'] },
+    advanced: { days: 5, exercises: ['squat', 'pushup', 'plank', 'jumping_jack', 'lunge'] },
+  },
+};
 
-  // Determine intensity level
-  let level = 'intermediate';
-  if (isSenior) level = 'beginner';
-  else if (isYoung) level = 'advanced';
+const EXERCISE_META: Record<string, { name: string; sets: number; reps: number; duration_seconds?: number; rest_seconds: number; notes: string }> = {
+  squat:        { name: 'Squats',        sets: 3, reps: 15, rest_seconds: 60,  notes: 'Keep knees behind toes, chest up' },
+  pushup:       { name: 'Push-Ups',      sets: 3, reps: 12, rest_seconds: 60,  notes: 'Full range of motion, core tight' },
+  lunge:        { name: 'Lunges',        sets: 3, reps: 12, rest_seconds: 60,  notes: 'Alternate legs, keep torso upright' },
+  plank:        { name: 'Plank Hold',    sets: 3, reps: 1,  duration_seconds: 45, rest_seconds: 45, notes: 'Straight line from head to heels' },
+  jumping_jack: { name: 'Jumping Jacks', sets: 3, reps: 30, rest_seconds: 30,  notes: 'Full arm extension overhead' },
+  cardio:       { name: 'Cardio Burst',  sets: 1, reps: 1,  duration_seconds: 300, rest_seconds: 60, notes: 'Maintain elevated heart rate' },
+};
 
-  switch (goal) {
-    case 'weight_loss':
-      return {
-        goal: 'Weight Loss',
-        level,
-        days_per_week: isSenior ? 3 : 5,
-        plan: getWeightLossPlan(level),
-        tips: [
-          'Focus on keeping heart rate elevated between exercises',
-          'Stay hydrated — drink water between sets',
-          'Combine this plan with a caloric deficit diet for best results',
-          'Aim for 7-8 hours of sleep each night to support recovery',
-        ],
-      };
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const FOCUS_LABELS: Record<string, string> = {
+  squat: 'Lower Body', pushup: 'Upper Body', lunge: 'Legs & Glutes',
+  plank: 'Core', jumping_jack: 'Cardio', cardio: 'Cardio Endurance',
+};
 
-    case 'strength':
-      return {
-        goal: 'Strength Building',
-        level,
-        days_per_week: isSenior ? 3 : 4,
-        plan: getStrengthPlan(level),
-        tips: [
-          'Progressive overload — increase reps each week',
-          'Rest 60-90 seconds between sets for optimal muscle growth',
-          'Consume protein within 30 minutes after your workout',
-          'Track your form accuracy to avoid injuries',
-        ],
-      };
+function buildPlan(goal: string, level: string, fitnessLevel: string) {
+  const normalizedGoal = goal?.toLowerCase().replace(/\s+/g, '_') || 'general_fitness';
+  const normalizedLevel = fitnessLevel?.toLowerCase() || level?.toLowerCase() || 'beginner';
 
-    case 'endurance':
-    default:
-      return {
-        goal: 'Endurance',
-        level,
-        days_per_week: isSenior ? 3 : 5,
-        plan: getEndurancePlan(level),
-        tips: [
-          'Build distance gradually to prevent injuries',
-          'Focus on steady breathing and pacing',
-          'Cross-train to build overall fitness',
-          'Stretch after every session to improve flexibility',
-        ],
-      };
-  }
+  const template = PLAN_TEMPLATES[normalizedGoal]?.[normalizedLevel]
+    || PLAN_TEMPLATES['general_fitness']['beginner'];
+
+  const { days, exercises } = template;
+  const workDays = DAYS_OF_WEEK.slice(0, days);
+
+  const plan = workDays.map((day, i) => {
+    const primaryEx = exercises[i % exercises.length];
+    const secondaryEx = exercises[(i + 1) % exercises.length];
+    return {
+      day,
+      focus: FOCUS_LABELS[primaryEx] || 'Full Body',
+      exercises: [
+        { type: primaryEx, ...EXERCISE_META[primaryEx] },
+        { type: secondaryEx, ...EXERCISE_META[secondaryEx] },
+      ],
+    };
+  });
+
+  // Add rest days
+  DAYS_OF_WEEK.slice(days).forEach(day => {
+    plan.push({ day, focus: 'Rest & Recovery', exercises: [] });
+  });
+
+  return {
+    goal: normalizedGoal.replace(/_/g, ' '),
+    level: normalizedLevel,
+    days_per_week: days,
+    plan,
+    diet_plan: DAYS_OF_WEEK.reduce((acc, obj) => {
+        acc[obj] = {
+            breakfast: { description: "Poha or Moong Dal Chilla", calories: 350, protein: 12, carbs: 55, fat: 6, sugar: 5 },
+            mid_snack: { description: "Handful of roasted Makhana (fox nuts)", calories: 120, protein: 4, carbs: 18, fat: 3, sugar: 1 },
+            lunch: { description: "2 Roti, a bowl of Dal, and Subzi (mixed veg or chicken)", calories: 450, protein: 20, carbs: 60, fat: 12, sugar: 5 },
+            snacks: { description: "Masala Chai (less sugar) and two Marie biscuits", calories: 110, protein: 3, carbs: 18, fat: 2, sugar: 6 },
+            dinner: { description: "Paneer Bhurji or Grilled chicken with 1 Roti and salad", calories: 400, protein: 25, carbs: 20, fat: 18, sugar: 4 },
+            daily_calories: 2100,
+            daily_protein: 140,
+            daily_carbs: 230
+        };
+        return acc;
+    }, {} as Record<string, any>),
+    tips: [
+      'Warm up for 5 minutes before each session',
+      'Stay hydrated — drink water before, during, and after',
+      'Sleep 7-9 hours for optimal recovery',
+      'Track your reps with the AI camera to earn city points',
+    ],
+  };
 }
 
-function getWeightLossPlan(level: string): WorkoutPlanDay[] {
-  const reps = level === 'beginner' ? 8 : level === 'intermediate' ? 12 : 15;
-  const sets = level === 'beginner' ? 2 : 3;
-
-  return [
-    {
-      day: 'Monday',
-      focus: 'Full Body HIIT',
-      exercises: [
-        { type: 'jumping_jack', name: 'Jumping Jacks', sets, reps: 20, rest_seconds: 30, notes: 'Warm up with high energy' },
-        { type: 'squat', name: 'Bodyweight Squats', sets, reps, rest_seconds: 45, notes: 'Focus on depth and form' },
-        { type: 'pushup', name: 'Push-ups', sets, reps: Math.floor(reps * 0.8), rest_seconds: 45, notes: 'Keep core tight' },
-        { type: 'plank', name: 'Plank Hold', sets: 2, reps: 1, duration_seconds: level === 'beginner' ? 20 : 45, rest_seconds: 30, notes: 'Hold steady' },
-      ],
-    },
-    {
-      day: 'Tuesday',
-      focus: 'Cardio & Core',
-      exercises: [
-        { type: 'running', name: 'Interval Running', sets: 1, reps: 1, duration_seconds: 1200, rest_seconds: 0, notes: 'Alternate 1 min sprint / 2 min jog' },
-        { type: 'plank', name: 'Plank Hold', sets: 3, reps: 1, duration_seconds: 30, rest_seconds: 30, notes: 'Engage core throughout' },
-      ],
-    },
-    {
-      day: 'Wednesday',
-      focus: 'Rest / Active Recovery',
-      exercises: [
-        { type: 'walking', name: 'Brisk Walk', sets: 1, reps: 1, duration_seconds: 1800, rest_seconds: 0, notes: 'Light 30-min walk to stay active' },
-      ],
-    },
-    {
-      day: 'Thursday',
-      focus: 'Lower Body Burn',
-      exercises: [
-        { type: 'squat', name: 'Squats', sets, reps, rest_seconds: 45, notes: 'Slow and controlled' },
-        { type: 'lunge', name: 'Alternating Lunges', sets, reps: reps * 2, rest_seconds: 45, notes: 'Keep front knee behind toe' },
-        { type: 'jumping_jack', name: 'Jumping Jacks', sets: 2, reps: 25, rest_seconds: 30, notes: 'Finish strong!' },
-      ],
-    },
-    {
-      day: 'Friday',
-      focus: 'Full Body Circuit',
-      exercises: [
-        { type: 'pushup', name: 'Push-ups', sets, reps, rest_seconds: 30, notes: 'Explosive push' },
-        { type: 'squat', name: 'Jump Squats', sets, reps: Math.floor(reps * 0.7), rest_seconds: 45, notes: 'Land softly' },
-        { type: 'plank', name: 'Plank', sets: 2, reps: 1, duration_seconds: 40, rest_seconds: 30, notes: 'Hold strong' },
-        { type: 'cardio', name: 'Cool Down Cardio', sets: 1, reps: 1, duration_seconds: 300, rest_seconds: 0, notes: 'Light movement to wind down' },
-      ],
-    },
-  ];
-}
-
-function getStrengthPlan(level: string): WorkoutPlanDay[] {
-  const reps = level === 'beginner' ? 8 : level === 'intermediate' ? 10 : 12;
-  const sets = level === 'beginner' ? 3 : 4;
-
-  return [
-    {
-      day: 'Monday',
-      focus: 'Upper Body Push',
-      exercises: [
-        { type: 'pushup', name: 'Standard Push-ups', sets, reps, rest_seconds: 60, notes: 'Full range of motion' },
-        { type: 'pushup', name: 'Wide Push-ups', sets: sets - 1, reps: Math.floor(reps * 0.8), rest_seconds: 60, notes: 'Wider hand placement for chest' },
-        { type: 'plank', name: 'Plank Hold', sets: 3, reps: 1, duration_seconds: 45, rest_seconds: 30, notes: 'Core stability finisher' },
-      ],
-    },
-    {
-      day: 'Tuesday',
-      focus: 'Lower Body',
-      exercises: [
-        { type: 'squat', name: 'Deep Squats', sets, reps, rest_seconds: 60, notes: 'Below parallel' },
-        { type: 'lunge', name: 'Walking Lunges', sets, reps: reps * 2, rest_seconds: 60, notes: 'Alternate legs' },
-        { type: 'squat', name: 'Pause Squats', sets: 3, reps: Math.floor(reps * 0.7), rest_seconds: 75, notes: 'Pause 3 sec at bottom' },
-      ],
-    },
-    {
-      day: 'Wednesday',
-      focus: 'Active Recovery',
-      exercises: [
-        { type: 'walking', name: 'Recovery Walk', sets: 1, reps: 1, duration_seconds: 1200, rest_seconds: 0, notes: 'Light walk + stretching' },
-      ],
-    },
-    {
-      day: 'Thursday',
-      focus: 'Full Body Power',
-      exercises: [
-        { type: 'pushup', name: 'Explosive Push-ups', sets: 3, reps: Math.floor(reps * 0.6), rest_seconds: 75, notes: 'Push off the ground' },
-        { type: 'squat', name: 'Jump Squats', sets: 3, reps: Math.floor(reps * 0.7), rest_seconds: 60, notes: 'Max height, soft landing' },
-        { type: 'lunge', name: 'Reverse Lunges', sets: 3, reps, rest_seconds: 60, notes: 'Step backwards' },
-        { type: 'plank', name: 'Extended Plank', sets: 2, reps: 1, duration_seconds: 60, rest_seconds: 30, notes: 'Arms extended' },
-      ],
-    },
-  ];
-}
-
-function getEndurancePlan(level: string): WorkoutPlanDay[] {
-  const runDuration = level === 'beginner' ? 900 : level === 'intermediate' ? 1500 : 2400;
-
-  return [
-    {
-      day: 'Monday',
-      focus: 'Steady State Cardio',
-      exercises: [
-        { type: 'running', name: 'Easy Run', sets: 1, reps: 1, duration_seconds: runDuration, rest_seconds: 0, notes: 'Conversational pace' },
-        { type: 'plank', name: 'Core Plank', sets: 3, reps: 1, duration_seconds: 30, rest_seconds: 20, notes: 'Post-run core work' },
-      ],
-    },
-    {
-      day: 'Tuesday',
-      focus: 'Muscular Endurance',
-      exercises: [
-        { type: 'squat', name: 'High-Rep Squats', sets: 3, reps: 20, rest_seconds: 45, notes: 'Maintain pace, no break' },
-        { type: 'pushup', name: 'Push-up Endurance', sets: 3, reps: 15, rest_seconds: 45, notes: 'Slow and steady' },
-        { type: 'jumping_jack', name: 'Jumping Jacks', sets: 3, reps: 30, rest_seconds: 30, notes: 'Keep rhythm' },
-      ],
-    },
-    {
-      day: 'Wednesday',
-      focus: 'Active Recovery',
-      exercises: [
-        { type: 'walking', name: 'Long Walk', sets: 1, reps: 1, duration_seconds: 2400, rest_seconds: 0, notes: 'Easy pace, enjoy it' },
-      ],
-    },
-    {
-      day: 'Thursday',
-      focus: 'Interval Training',
-      exercises: [
-        { type: 'running', name: 'Interval Run', sets: 1, reps: 1, duration_seconds: runDuration, rest_seconds: 0, notes: '30s fast / 60s recovery × 10' },
-        { type: 'lunge', name: 'Walking Lunges', sets: 3, reps: 16, rest_seconds: 45, notes: 'Endurance finisher' },
-      ],
-    },
-    {
-      day: 'Friday',
-      focus: 'Long Run',
-      exercises: [
-        { type: 'running', name: 'Long Slow Run', sets: 1, reps: 1, duration_seconds: Math.floor(runDuration * 1.5), rest_seconds: 0, notes: 'Build aerobic base' },
-      ],
-    },
-  ];
-}
-
-// GET /api/workout-plan — Generate personalized plan
+// GET /api/workout-plan
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { data: user } = await supabase
-      .from('users')
-      .select('fitness_goal, height_cm, weight_kg, target_weight_kg, time_period_weeks, time_per_day_minutes, age, gender, health_issues')
-      .eq('id', req.user!.id)
-      .single();
+    const userId = req.user!.id;
+    const force = req.query.force === 'true';
+    const cacheKey = `workout_plan:${userId}`;
 
-    if (!user || !user.fitness_goal) {
-      // Return default plan if onboarding not completed
-      res.json(generateWorkoutPlan('endurance', null, null, null));
-      return;
-    }
-
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const prompt = `
-          You are an expert AI fitness coach and nutritionist.
-          Create a personalized, dynamic Weekly Workout and Diet Plan for a user with the following profile:
-          Goal: ${user.fitness_goal}
-          Current Weight: ${user.weight_kg} kg
-          Target Weight: ${user.target_weight_kg || 'Maintain'} kg
-          Time Period: ${user.time_period_weeks || 'Ongoing'} weeks
-          Time Available Per Day: ${user.time_per_day_minutes || 30} minutes
-          Age: ${user.age || 'Unknown'}, Gender: ${user.gender || 'Unknown'}, Height: ${user.height_cm || 'Unknown'} cm
-          Health Issues / Injuries: ${user.health_issues || 'None'}
-
-          Important constraints for the workout:
-          - Valid exercise "type" keys are strict enum: 'squat', 'pushup', 'lunge', 'plank', 'jumping_jack', 'cardio', 'running', 'walking'
-          - Keep the number of exercises per day manageable within the ${user.time_per_day_minutes || 30} minutes limit.
-          
-          Provide the output as STRICT JSON matching this exact structure:
-          {
-            "goal": "Descriptive Goal Name",
-            "level": "beginner|intermediate|advanced",
-            "days_per_week": number,
-            "diet_plan": [
-              "Detailed dietary guideline 1",
-              "Detailed dietary guideline 2",
-              "Detailed dietary guideline 3"
-            ],
-            "tips": ["Pro tip 1", "Pro tip 2", "Pro tip 3"],
-            "plan": [
-              {
-                "day": "Monday",
-                "focus": "Upper Body",
-                "exercises": [
-                  { "type": "pushup", "name": "Push-ups", "sets": 3, "reps": 10, "rest_seconds": 60, "duration_seconds": 0, "notes": "Keep form strict" }
-                ]
-              }
-            ]
-          }
-        `;
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        });
-
-        const dynamicPlan = JSON.parse(response.text || '{}');
-        res.json(dynamicPlan);
+    // 1. Try Cache (Redis)
+    if (!force) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        res.json(JSON.parse(cached));
         return;
-      } catch (geminiError) {
-        console.error('Gemini plan generation failed, falling back to rule-based:', geminiError);
       }
     }
 
-    // Fallback to rule-based logic
-    const plan = generateWorkoutPlan(
-      user.fitness_goal,
-      user.age,
-      user.weight_kg,
-      user.height_cm
-    );
+    // 2. Try Supabase (Persistent)
+    const { data: user } = await supabase
+      .from('users')
+      .select('fitness_goal, fitness_level, age, weight_kg, height_cm, current_plan_json')
+      .eq('id', userId)
+      .single();
 
-    res.json(plan);
+    if (!force && user?.current_plan_json) {
+      const plan = user.current_plan_json;
+      await cache.set(cacheKey, JSON.stringify(plan), 604800); // Backfill Redis
+      res.json(plan);
+      return;
+    }
+
+    const goal = user?.fitness_goal || 'general_fitness';
+    const level = user?.fitness_level || 'beginner';
+
+    try {
+      if (process.env.GEMINI_API_KEY) {
+        console.log(`[Gemini] Starting plan generation for user ${userId} using gemini-3.1-flash-lite-preview...`);
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const prompt = `
+Generate a personalized 7-day workout and an Indian nutrition diet plan.
+Goal: ${goal}
+Fitness Level: ${level}
+Age: ${user?.age || 'unknown'}
+Weight: ${user?.weight_kg ? user?.weight_kg + ' kg' : 'unknown'}
+Height: ${user?.height_cm ? user?.height_cm + ' cm' : 'unknown'}
+
+Ensure the diet_plan exclusively features delicious, healthy, high-protein Indian dietary choices (e.g., Dal, Paneer, Chicken curry, Roti, Dosa, Poha, Chilla, Makhana, etc).
+
+You must return a valid JSON object matching exactly this schema:
+{
+  "goal": "string (the user's goal formatted dynamically)",
+  "level": "${level}",
+  "days_per_week": number,
+  "plan": [
+    {
+      "day": "Monday",
+      "focus": "string (e.g., 'Upper Body', 'Lower Body', 'Rest & Recovery')",
+      "exercises": [
+        {
+          "type": "squat" | "pushup" | "lunge" | "plank" | "jumping_jack" | "cardio" | "running" | "walking",
+          "name": "string (friendly name of the exercise)",
+          "sets": number,
+          "reps": number,
+          "duration_seconds": number,
+          "rest_seconds": number,
+          "notes": "string"
+        }
+      ]
+    }
+  ],
+  "diet_plan": {
+    "Monday": {
+      "breakfast": {
+        "description": "string",
+        "calories": number,
+        "protein": number,
+        "carbs": number,
+        "fat": number,
+        "sugar": number
+      },
+      "mid_snack": { "description": "string", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number },
+      "lunch": { "description": "string", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number },
+      "snacks": { "description": "string", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number },
+      "dinner": { "description": "string", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number },
+      "daily_calories": number,
+      "daily_protein": number,
+      "daily_carbs": number
+    },
+    // Same for Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  },
+  "tips": [
+    "string"
+  ]
+}
+
+Instructions for plan array:
+- Must have exactly 7 entries, one for each day of the week (Monday through Sunday).
+- For 'exercises.type', you MUST ONLY pick one of the exact string literals listed above (e.g., "squat", "pushup", etc). If it's a rest day, leave 'exercises' empty.
+`;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite-preview',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json'
+          }
+        });
+
+        console.log(`[Gemini] Successfully generated plan for user ${userId}. Parsing response...`);
+        const generatedText = response.text || '';
+        const aiPlan = JSON.parse(generatedText);
+        
+        // Ensure diet_plan exists in response
+        if (aiPlan.diet_plan && aiPlan.plan) {
+          // Persist to Supabase & Redis
+          await Promise.all([
+            cache.set(cacheKey, JSON.stringify(aiPlan), 604800),
+            supabase.from('users').update({ current_plan_json: aiPlan }).eq('id', userId)
+          ]);
+
+          res.json(aiPlan);
+          return;
+        }
+      }
+    } catch (aiErr) {
+      console.error('Gemini AI failed, falling back to static plan:', aiErr);
+    }
+
+    const fallbackPlan = buildPlan(goal, level, level);
+    res.json(fallbackPlan);
   } catch (err) {
     console.error('Workout plan error:', err);
     res.status(500).json({ error: 'Failed to generate workout plan' });
   }
+});
+
+// POST /api/workout-plan/upgrade
+// Upgrades fitness level and force-regenerates a next-level plan
+router.post('/upgrade', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        const { data: user } = await supabase.from('users').select('fitness_level').eq('id', userId).single();
+        
+        const levels = ['beginner', 'intermediate', 'advanced'];
+        const currentLevel = user?.fitness_level || 'beginner';
+        const currentIndex = levels.indexOf(currentLevel.toLowerCase());
+        
+        if (currentIndex < levels.length - 1) {
+            const nextLevel = levels[currentIndex + 1];
+            await supabase.from('users').update({ 
+                fitness_level: nextLevel,
+                updated_at: new Date().toISOString()
+            }).eq('id', userId);
+            
+            // Success - client should call GET /?force=true next
+            res.json({ success: true, from: currentLevel, to: nextLevel });
+        } else {
+            res.status(400).json({ error: 'You are already at the Advanced level!' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to upgrade level' });
+    }
 });
 
 export default router;

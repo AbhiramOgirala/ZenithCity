@@ -48,7 +48,7 @@ function Toast({ id, type, message }: { id: string; type: string; message: strin
 export default function ToastContainer() {
   const { toasts } = useSelector((s: RootState) => s.ui);
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+    <div className="fixed top-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2" role="log" aria-live="polite" aria-label="Notifications">
       <AnimatePresence>
         {toasts.map(t => <Toast key={t.id} {...t} />)}
       </AnimatePresence>
