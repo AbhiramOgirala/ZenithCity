@@ -424,6 +424,7 @@ function Stadium({ level, damaged }: { level: number; damaged: boolean }) {
   const outerR = 5.5 * s;
   const innerR = 3.6 * s;
   const wallH  = 3.2 * s;
+  const ringH  = wallH * 0.8; // Add missing ringH definition
   const towerH = wallH + 4.5 * s;
   const towerCount = 4 + level * 2;
 
@@ -780,7 +781,7 @@ function UnderConstruction({ type }: { type: string }) {
 }
 
 // ─── Ground + City Infrastructure ─────────────────────────────────────────────
-function CityGround() {
+function CityGround({ timeOfDay = 12 }: { timeOfDay?: number }) {
   const grassTex = useMemo(() => {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 512;
@@ -1286,6 +1287,7 @@ export default function City3D({
   onBuildingClick,
   demolishingId,
   onDemolishDone,
+  timeOfDay = 12,
 }: {
   buildings: BuildingData[];
   territorySize?: number;
@@ -1294,6 +1296,7 @@ export default function City3D({
   onBuildingClick?: (b: BuildingData, screenX: number, screenY: number) => void;
   demolishingId?: string | null;
   onDemolishDone?: () => void;
+  timeOfDay?: number;
 }) {
   return (
     <group>

@@ -82,6 +82,10 @@ function BuildingCountdown({ completedAt }: { completedAt: string }) {
 }
 
 export default function CityPage() {
+  const [placementMode, setPlacementMode] = useState(null);
+  const [isDragMode, setIsDragMode] = useState(false);
+  const [position] = useState({ x: 0, y: 0, z: 0 });
+  
   const dispatch = useDispatch<AppDispatch>();
   const { city, loading, buildingPanelOpen } = useSelector((s: RootState) => s.city);
   const { user } = useSelector((s: RootState) => s.auth);
@@ -149,17 +153,17 @@ export default function CityPage() {
 
   const handleBuildingMove = async (buildingId: string, position: { x: number, z: number }) => {
     try {
-      const result = await dispatch(moveBuilding({
-        buildingId,
-        position_x: position.x,
-        position_z: position.z
-      }));
+      // const result = await dispatch(moveBuilding({
+      //   buildingId,
+      //   position_x: position.x,
+      //   position_z: position.z
+      // }));
 
-      if (result.meta.requestStatus === 'fulfilled') {
-        dispatch(addToast({ type: 'success', message: 'Building moved successfully!' }));
-      } else {
-        dispatch(addToast({ type: 'error', message: 'Failed to move building' }));
-      }
+      // if (result.meta.requestStatus === 'fulfilled') {
+      //   dispatch(addToast({ type: 'success', message: 'Building moved successfully!' }));
+      // } else {
+      //   dispatch(addToast({ type: 'error', message: 'Failed to move building' }));
+      // }
     } catch (error) {
       dispatch(addToast({ type: 'error', message: 'Failed to move building' }));
     }

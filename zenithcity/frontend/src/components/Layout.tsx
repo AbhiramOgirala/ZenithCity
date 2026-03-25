@@ -1,7 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, ClipboardList, Apple } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Building2, Trophy, Swords, User, LogOut, Menu, X, Zap, ClipboardList, Apple, RefreshCw } from 'lucide-react';
 import { RootState, AppDispatch } from '../store';
 import { logout, refreshBalance, fetchProfile } from '../store/slices/authSlice';
 import { toggleSidebar } from '../store/slices/uiSlice';
@@ -24,7 +24,7 @@ const mobileNavItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
   { to: '/workout', icon: Dumbbell, label: 'Workout' },
   { to: '/city', icon: Building2, label: 'City' },
-  { to: '/leaderboard', icon: Trophy, label: 'Rank' },
+  { to: '/leaderboard', icon: Trophy, label: 'Ranks' },
   { to: '/profile', icon: User, label: 'Profile' },
 ];
 
@@ -205,7 +205,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <span className="font-mono text-sm font-medium text-neon-yellow">
                 {user?.points_balance?.toLocaleString() || '0'}
               </span>
-              <RefreshCw className={`w-3 h-3 text-neon-cyan ${refreshing ? 'animate-spin' : ''}`} />
+            </div>
+            <button
+              onClick={handleRefreshBalance}
+              disabled={refreshing}
+              className="p-2 text-space-400 hover:text-white rounded-lg transition-colors"
+              aria-label="Refresh points balance"
+            >
+              <RefreshCw className={`w-4 h-4 text-neon-cyan ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </header>

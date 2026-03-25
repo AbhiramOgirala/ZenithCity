@@ -23,8 +23,8 @@ npm run docker:down
 ### Backend Only
 ```bash
 cd backend
-npm run build
-npm run docker:build
+npm run build  # First compile TypeScript
+docker build -t zenithcity-backend .
 ```
 
 ### Frontend Only
@@ -36,11 +36,15 @@ docker build -t zenithcity-frontend .
 
 ## Troubleshooting
 
-### "dist not found" Error
-This happens when the TypeScript code hasn't been compiled. Run:
+### TypeScript Compilation Errors
+If you get TypeScript errors during Docker build:
 ```bash
-npm run build
+cd backend
+npm run build  # Check for TS errors locally first
 ```
+
+### "dist not found" Error
+This happens when the TypeScript code hasn't been compiled. The Docker build now handles this automatically.
 
 ### Build Context Issues
 Make sure you're running Docker commands from the correct directory:
@@ -49,3 +53,12 @@ Make sure you're running Docker commands from the correct directory:
 
 ### Environment Variables
 Copy `.env.example` to `.env` in both backend and root directories and fill in your values before building.
+
+## Build Verification
+
+Test the backend build locally:
+```bash
+cd backend
+npm run build
+node test-build.js
+```

@@ -55,6 +55,8 @@ function calcGPSDistance(coords: Array<{ latitude: number; longitude: number }>)
 }
 
 export default function WorkoutPage() {
+  const [todayExercises, setTodayExercises] = useState<any[]>([]);
+  
   const dispatch = useDispatch<AppDispatch>();
   const [searchParams] = useSearchParams();
   const { active_session, loading, last_completed } = useSelector((s: RootState) => s.workout);

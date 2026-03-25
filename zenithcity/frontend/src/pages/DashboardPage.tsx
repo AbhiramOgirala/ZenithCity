@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useState } from 'react';
-import { Dumbbell, Building2, Trophy, Swords, Zap, TrendingUp, Heart, Map, ArrowRight, Flame, Shield, AlertTriangle, Watch, Activity } from 'lucide-react';
+import { Dumbbell, Building2, Trophy, Swords, Zap, TrendingUp, Heart, Map, ArrowRight, Flame, Shield, AlertTriangle, Watch, Activity, Target, ClipboardList } from 'lucide-react';
 import { fetchDashboard } from '../store/slices/dashboardSlice';
 import { addToast } from '../store/slices/uiSlice';
 import { api } from '../services/api';
