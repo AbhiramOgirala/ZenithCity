@@ -51,21 +51,83 @@ function AppContent() {
       <Route path="/onboarding" element={
         isAuthenticated ? <OnboardingPage /> : <Navigate to="/auth" replace />
       } />
-      <Route path="/*" element={
+      <Route path="/" element={
         isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
         <PrivateRoute>
           <Layout>
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/workout" element={<WorkoutPage />} />
-              <Route path="/workout-plan" element={<WorkoutPlanPage />} />
-              <Route path="/nutrition" element={<NutritionPage />} />
-              <Route path="/city" element={<CityPage />} />
-              <Route path="/leaderboard" element={<LeaderboardPage />} />
-              <Route path="/battles" element={<BattlesPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-            </Routes>
+            <Navigate to="/dashboard" replace />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/dashboard" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <DashboardPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/workout" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <WorkoutPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/workout-plan" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <WorkoutPlanPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/nutrition" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <NutritionPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/city" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <CityPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/leaderboard" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <LeaderboardPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/battles" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <BattlesPage />
+          </Layout>
+        </PrivateRoute>
+        )
+      } />
+      <Route path="/profile" element={
+        isAuthenticated && needsOnboarding ? <Navigate to="/onboarding" replace /> : (
+        <PrivateRoute>
+          <Layout>
+            <ProfilePage />
           </Layout>
         </PrivateRoute>
         )
