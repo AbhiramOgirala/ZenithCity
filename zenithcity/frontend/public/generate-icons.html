@@ -1,0 +1,104 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PWA Icon Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .icon-container { display: inline-block; margin: 10px; text-align: center; }
+        canvas { border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>ZenithCity PWA Icon Generator</h1>
+    <p>Right-click each canvas and "Save image as..." to download PNG icons.</p>
+    
+    
+    <div class="icon-container">
+        <canvas id="icon-72" width="72" height="72"></canvas>
+        <br>
+        <label>72x72</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-96" width="96" height="96"></canvas>
+        <br>
+        <label>96x96</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-128" width="128" height="128"></canvas>
+        <br>
+        <label>128x128</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-144" width="144" height="144"></canvas>
+        <br>
+        <label>144x144</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-152" width="152" height="152"></canvas>
+        <br>
+        <label>152x152</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-192" width="192" height="192"></canvas>
+        <br>
+        <label>192x192</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-384" width="384" height="384"></canvas>
+        <br>
+        <label>384x384</label>
+    </div>
+    
+    <div class="icon-container">
+        <canvas id="icon-512" width="512" height="512"></canvas>
+        <br>
+        <label>512x512</label>
+    </div>
+    
+
+    <script>
+        // Simple icon generator using canvas
+        const iconSizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        
+        iconSizes.forEach(size => {
+            const canvas = document.getElementById('icon-' + size);
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = '#020614';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Icon shape (simple geometric design)
+            const center = size / 2;
+            const radius = size * 0.3;
+            
+            // Outer glow
+            const gradient = ctx.createRadialGradient(center, center, 0, center, center, radius * 1.5);
+            gradient.addColorStop(0, '#00F5FF');
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Main icon
+            ctx.fillStyle = '#00F5FF';
+            ctx.beginPath();
+            ctx.arc(center, center, radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner design
+            ctx.fillStyle = '#020614';
+            ctx.font = size * 0.3 + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Z', center, center);
+        });
+    </script>
+</body>
+</html>

@@ -1,14 +1,17 @@
-const CACHE_NAME = 'zenithcity-v1';
+const CACHE_NAME = 'zenithcity-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/icons/icon.svg'
 ];
 
 // Install event — cache shell assets
 self.addEventListener('install', (event) => {
+  console.log('SW: Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      console.log('SW: Caching static assets');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -17,12 +20,16 @@ self.addEventListener('install', (event) => {
 
 // Activate event — clean old caches
 self.addEventListener('activate', (event) => {
+  console.log('SW: Activating...');
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
           .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
+          .map((key) => {
+            console.log('SW: Deleting old cache:', key);
+            return caches.delete(key);
+          })
       )
     )
   );
@@ -59,4 +66,11 @@ self.addEventListener('fetch', (event) => {
       return cached || fetched;
     })
   );
+});
+
+// Handle PWA install prompt
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

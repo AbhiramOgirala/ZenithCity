@@ -367,3 +367,44 @@
     forced-color-adjust: none;
   }
 }
+
+/* PWA Install Banner */
+.pwa-install-banner {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(2, 6, 20, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+@media (min-width: 1024px) {
+  .pwa-install-banner {
+    bottom: 2rem;
+    left: 2rem;
+    right: auto;
+    max-width: 24rem;
+  }
+}
+
+/* PWA Standalone Mode Detection */
+@media (display-mode: standalone) {
+  .pwa-install-banner {
+    display: none;
+  }
+}
+
+/* iOS Safari PWA Detection */
+@media (display-mode: standalone) and (-webkit-touch-callout: none) {
+  .pwa-install-banner {
+    display: none;
+  }
+}
