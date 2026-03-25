@@ -412,62 +412,96 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
   const statsRef  = useRef({ totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase });
   const activeRef = useRef(isActive);
   const lastGeminiUpdate = useRef(0);
+  const lastRepTime = useRef(0); // Cooldown to prevent double-counting
+  const lastSpokenFeedback = useRef('');
+  const lastSpokenTime = useRef(0);
   const geminiScoreRef = useRef(1.0);
+  const exerciseRef = useRef(exerciseType);
   const [feedback, setFeedback]       = useState('Position yourself in frame');
   const [formScore, setFormScore]     = useState(1.0);
   const [loaded, setLoaded]           = useState(false);
   const [loadError, setLoadError]     = useState('');
   const [repFlash, setRepFlash]       = useState(false);
   const [isGeminiActive, setIsGeminiActive] = useState(false);
+  const [geminiRepCount, setGeminiRepCount] = useState({ total: 0, valid: 0 });
 
   // Keep activeRef in sync
   useEffect(() => { activeRef.current = isActive; }, [isActive]);
 
-  // Setup Gemini Socket listener
+  // Reset stats when exercise type changes
+  useEffect(() => {
+    if (exerciseRef.current !== exerciseType) {
+      exerciseRef.current = exerciseType;
+      statsRef.current = { totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase };
+      lastRepTime.current = 0;
+      onStatsUpdate({
+        totalReps: 0, validReps: 0, formAccuracy: 0,
+        feedback: 'Position yourself in frame', poseLandmarks: [], isActive: false,
+      });
+    }
+  }, [exerciseType, onStatsUpdate]);
+
+  // Setup Gemini Socket listener — coaching feedback only (reps counted locally by MediaPipe)
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
     
-    // Listen for Gemini AI streaming analysis
+    let geminiHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+    
+    const resetGeminiHeartbeat = () => {
+      if (geminiHeartbeatTimer) clearTimeout(geminiHeartbeatTimer);
+      geminiHeartbeatTimer = setTimeout(() => {
+        setIsGeminiActive(false);
+      }, 5000);
+    };
+
+    // Gemini sends per-frame analysis — use it ONLY for coaching feedback & form score overlay
     socket.on('workout:analysis', (data: any) => {
       setIsGeminiActive(true);
+      resetGeminiHeartbeat();
       if (!activeRef.current) return;
 
-      // Gemini is the source of truth for rep form checks
-      if (data.rep_completed_this_frame) {
-        // Increment total reps natively in the browser only when AI says a rep finished
-        statsRef.current.totalReps += 1;
+      // Use Gemini's form score as the displayed score (more accurate than local)
+      geminiScoreRef.current = data.form_score ?? geminiScoreRef.current;
+      setFormScore(geminiScoreRef.current);
+      
+      // Show Gemini's coaching feedback
+      if (data.feedback) {
+        setFeedback(`🤖 ${data.feedback}`);
         
-        // Count valid only if form is good OR gemini says it is valid
-        if (data.is_valid_form || data.form_score >= 0.85) {
-            statsRef.current.validReps += 1;
-            setRepFlash(true);
-            setTimeout(() => setRepFlash(false), 400);
+        // Voice Coaching: Speak feedback if form is poor and we haven't spoken recently (5s debounce)
+        const now = Date.now();
+        const score = data.form_score ?? 1.0;
+        
+        if (activeRef.current && score < 0.85 && data.feedback !== 'Tracking...') {
+          if (data.feedback !== lastSpokenFeedback.current || (now - lastSpokenTime.current > 5000)) {
+            lastSpokenFeedback.current = data.feedback;
+            lastSpokenTime.current = now;
+            
+            // Cancel any ongoing speech and speak the new correction
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+              const utterance = new SpeechSynthesisUtterance(data.feedback);
+              utterance.rate = 1.1; // Speak slightly faster for workouts
+              utterance.pitch = 1.0;
+              window.speechSynthesis.speak(utterance);
+            }
+          }
         }
       }
 
-      // We preserve the phase provided by Gemini
-      statsRef.current.phase = data.current_phase || statsRef.current.phase;
-      
-      geminiScoreRef.current = data.form_score ?? 1.0;
-      setFormScore(geminiScoreRef.current);
-      setFeedback(`[AI Coach]: ${data.feedback}`);
-      
-      onStatsUpdate({
-        totalReps: statsRef.current.totalReps,
-        validReps: statsRef.current.validReps,
-        formAccuracy: geminiScoreRef.current,
-        feedback: data.feedback,
-        poseLandmarks: [], // Handled by mediapipe
-        isActive: true,
+      // Track Gemini's running count for reference (displayed as secondary badge)
+      setGeminiRepCount({
+        total: data.gemini_total_reps ?? 0,
+        valid: data.gemini_valid_reps ?? 0,
       });
     });
 
     return () => {
+      if (geminiHeartbeatTimer) clearTimeout(geminiHeartbeatTimer);
       socket.off('workout:analysis');
-      socket.emit('workout:end');
     };
-  }, [onStatsUpdate]);
+  }, []);
 
   // Attach stream to video
   useEffect(() => {
@@ -555,39 +589,56 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       if (mirroredLms.length && activeRef.current) {
         const analysis = analyzeExercise(exerciseType, mirroredLms, statsRef.current.phase as RepPhase);
 
-        // We only use MediaPipe for instant visual feedback on phase/form score.
-        // We NO LONGER increment reps locally. We trust Gemini for that.
-        
-        // Only update local form score if Gemini hasn't taken over recently
+        // ── ALWAYS count reps locally with MediaPipe (instant feedback) ──
+        statsRef.current.formScore = analysis.formScore;
+        statsRef.current.phase     = analysis.phase;
+
+        const now = Date.now();
+        if (analysis.repComplete && (now - lastRepTime.current > 600)) {
+          lastRepTime.current = now;
+          statsRef.current.totalReps += 1;
+          // Use Gemini's form score if available, otherwise use local
+          const effectiveScore = isGeminiActive ? geminiScoreRef.current : analysis.formScore;
+          if (effectiveScore >= 0.85) {
+            statsRef.current.validReps += 1;
+            setRepFlash(true);
+            setTimeout(() => setRepFlash(false), 400);
+          }
+        }
+
+        // Show local feedback when Gemini is not providing it
         if (!isGeminiActive) {
-          statsRef.current.formScore = analysis.formScore;
-          statsRef.current.phase     = analysis.phase;
           setFormScore(analysis.formScore);
           setFeedback(analysis.feedback);
           
-          onStatsUpdate({
-            totalReps: statsRef.current.totalReps,
-            validReps: statsRef.current.validReps,
-            formAccuracy: analysis.formScore,
-            feedback: analysis.feedback,
-            poseLandmarks: mirroredLms,
-            isActive: true,
-          });
-        } else {
-          // If Gemini is active, we just do a silent update of landmarks
-          onStatsUpdate({
-            totalReps: statsRef.current.totalReps,
-            validReps: statsRef.current.validReps,
-            formAccuracy: geminiScoreRef.current, // Use Gemini's score
-            feedback: feedback, // Keep Gemini's feedback
-            poseLandmarks: mirroredLms,
-            isActive: true,
-          });
+          // Voice Coaching (Local Fallback)
+          const nowTime = Date.now();
+          if (activeRef.current && analysis.formScore < 0.85 && analysis.feedback !== 'Tracking...') {
+            if (analysis.feedback !== lastSpokenFeedback.current || (nowTime - lastSpokenTime.current > 5000)) {
+              lastSpokenFeedback.current = analysis.feedback;
+              lastSpokenTime.current = nowTime;
+              
+              if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(analysis.feedback);
+                utterance.rate = 1.1;
+                window.speechSynthesis.speak(utterance);
+              }
+            }
+          }
         }
+
+        onStatsUpdate({
+          totalReps: statsRef.current.totalReps,
+          validReps: statsRef.current.validReps,
+          formAccuracy: isGeminiActive ? geminiScoreRef.current : analysis.formScore,
+          feedback: isGeminiActive ? feedback : analysis.feedback,
+          poseLandmarks: mirroredLms,
+          isActive: true,
+        });
 
         // ─── Gemini Live Stream (Hybrid Mode) ───
         // Only capture & send frame to Gemini every 400ms if active
-        const now = Date.now();
         if (activeRef.current && (now - lastGeminiUpdate.current > 400)) {
           lastGeminiUpdate.current = now;
           const socket = getSocket();
@@ -632,7 +683,7 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       <video
         ref={videoRef}
         autoPlay playsInline muted
-        style={{ position: 'absolute', top: 0, left: 0, width: '100px', height: '75px', zIndex: 1000, border: '2px solid red' }}
+        style={{ position: 'absolute', top: 0, left: 0, width: '10px', height: '10px', opacity: 0, zIndex: -10 }}
       />
 
       {/* Canvas output */}
@@ -690,6 +741,22 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
             {feedback}
           </div>
 
+            {/* Reference Image Overlay */}
+            {['squat', 'pushup', 'lunge', 'jumping_jack', 'plank'].includes(exerciseType) && (
+              <div className="absolute right-3 bottom-14 w-24 sm:w-32 rounded-xl overflow-hidden glass border border-space-500/30 shadow-2xl opacity-80 hover:opacity-100 transition-opacity">
+                <div className="bg-space-800/80 px-2 py-1 flex items-center justify-between border-b border-space-500/30">
+                  <span className="text-[9px] sm:text-[10px] font-display font-semibold text-white uppercase tracking-wider">Correct Form</span>
+                  <Eye className="w-3 h-3 text-neon-cyan" />
+                </div>
+                <img 
+                  src={`/exercises/${exerciseType}.png`} 
+                  alt={`${exerciseType} reference`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              </div>
+            )}
+            
           {/* Rep counter — shown when active */}
           {isActive && (
             <div className="absolute left-3 bottom-14 flex flex-col gap-1">
@@ -701,6 +768,13 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
                 <p className="text-xs text-neon-green font-mono">Valid</p>
                 <p className="text-lg font-display font-black text-neon-green">{statsRef.current.validReps}</p>
               </div>
+              {/* Gemini's count shown as secondary reference */}
+              {isGeminiActive && geminiRepCount.total > 0 && (
+                <div className="glass-sm px-2.5 py-1.5 rounded-lg text-center border border-neon-cyan/30">
+                  <p className="text-[10px] text-neon-cyan font-mono">AI Verified</p>
+                  <p className="text-sm font-display font-bold text-neon-cyan">{geminiRepCount.valid}/{geminiRepCount.total}</p>
+                </div>
+              )}
             </div>
           )}
         </>

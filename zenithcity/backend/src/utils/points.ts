@@ -32,8 +32,9 @@ export function calculateWorkoutPoints(input: PointsCalculationInput): number {
     const gpsOnly: ExerciseType[] = ['running', 'walking'];
     if (!gpsOnly.includes(exercise_type)) {
       // Manual/No-camera workouts for strength/cardio get 5 pts/min (half of cardio rate)
-      // instead of being based on unverified reps.
-      return Math.floor(durationMinutes * 5);
+      // Cap at 50 pts per session to prevent abuse
+      const manualPts = Math.floor(durationMinutes * 5);
+      return Math.min(manualPts, 50);
     }
   }
 
@@ -64,10 +65,14 @@ export function calculateRouteDistance(coords: Array<{ latitude: number; longitu
   if (coords.length < 2) return 0;
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
-    total += haversineDistance(
+    const segDist = haversineDistance(
       coords[i - 1].latitude, coords[i - 1].longitude,
       coords[i].latitude, coords[i].longitude
     );
+    // Skip GPS jumps larger than 500m (likely GPS error/spike)
+    if (segDist < 0.5) {
+      total += segDist;
+    }
   }
   return total;
 }

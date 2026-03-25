@@ -40,16 +40,27 @@ function formatTime(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 function calcGPSDistance(coords: Array<{ latitude: number; longitude: number }>): number {
   if (coords.length < 2) return 0;
   let total = 0;
-  const R = 6371;
   for (let i = 1; i < coords.length; i++) {
-    const dLat = (coords[i].latitude  - coords[i-1].latitude)  * Math.PI / 180;
-    const dLon = (coords[i].longitude - coords[i-1].longitude) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 +
-      Math.cos(coords[i-1].latitude * Math.PI/180) * Math.cos(coords[i].latitude * Math.PI/180) * Math.sin(dLon/2)**2;
-    total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const segDist = haversine(
+      coords[i-1].latitude, coords[i-1].longitude,
+      coords[i].latitude, coords[i].longitude
+    );
+    // Skip GPS jumps larger than 500m (likely error)
+    if (segDist < 0.5) {
+      total += segDist;
+    }
   }
   return total;
 }
@@ -151,12 +162,20 @@ export default function WorkoutPage() {
   const isGPS        = exerciseMeta?.type === 'gps';
   const gpsDistance  = calcGPSDistance(gpsCoords);
 
-  // Points: 0 without camera (except GPS)
+  // Auto-enable GPS for GPS exercises
+  useEffect(() => {
+    if (isGPS && !gpsEnabled) {
+      setGpsEnabled(true);
+    }
+  }, [isGPS]);
+
+  // Points: based on whole minutes (not seconds) to avoid "ticking" every second
   const estimatedPoints = useCallback(() => {
+    const fullMinutes = Math.floor(elapsedSeconds / 60);
     if (isGPS)             return Math.floor(gpsDistance * 50);
-    if (!cameraEnabled)    return Math.floor((elapsedSeconds / 60) * 5); // Half of cardio points
+    if (!cameraEnabled)    return fullMinutes * 5; // 5 pts per full minute
     if (isStrength)        return aiStats.validReps * 2;
-    return Math.floor((elapsedSeconds / 60) * 10);
+    return fullMinutes * 10; // 10 pts per full minute for cardio
   }, [cameraEnabled, isStrength, isGPS, aiStats.validReps, elapsedSeconds, gpsDistance]);
 
   const handleStartWorkout = async () => {
@@ -165,11 +184,12 @@ export default function WorkoutPage() {
     }
     const result = await dispatch(startWorkout({
       exercise_type: selectedExercise,
-      verification_status: cameraEnabled ? 'ai_verified' : 'manual',
+      verification_status: cameraEnabled ? 'ai_verified' : (isGPS ? 'ai_verified' : 'manual'),
     }));
     if (result.meta.requestStatus === 'fulfilled') {
       dispatch(addToast({ type: 'success', message: `${exerciseMeta.emoji} ${exerciseMeta.label} started!` }));
-      if (gpsEnabled && isGPS) startGPS();
+      // Auto-start GPS tracking for GPS exercises
+      if (isGPS) startGPS();
     }
   };
 
@@ -180,13 +200,64 @@ export default function WorkoutPage() {
       return;
     }
 
-    // Capture current values before clearing state
-    const finalValidReps    = cameraEnabled ? aiStats.validReps    : 0;
-    const finalFormAccuracy = cameraEnabled ? aiStats.formAccuracy : 0;
-    const finalTotalReps    = aiStats.totalReps;
+    // Capture local counts before clearing
+    const localTotalReps    = aiStats.totalReps;
+    const localValidReps    = cameraEnabled ? aiStats.validReps    : 0;
+    const localFormAccuracy = cameraEnabled ? aiStats.formAccuracy : 0;
     const capturedCoords    = [...gpsCoords];
 
-    // Stop camera/GPS immediately so user sees the session ended
+    // ── Request Gemini verification ──
+    // Send workout:end to backend, which triggers Gemini to emit workout:verification
+    const socket = (await import('../services/socket')).getSocket();
+    
+    let geminiVerification: {
+      gemini_total_reps: number;
+      gemini_valid_reps: number;
+      gemini_avg_form_score: number;
+      gemini_was_active: boolean;
+    } | null = null;
+
+    if (socket?.connected && cameraEnabled) {
+      // Wait for Gemini's verification response (up to 2 seconds)
+      geminiVerification = await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          socket.off('workout:verification');
+          resolve(null); // Timeout — use local counts
+        }, 2000);
+
+        socket.once('workout:verification', (data: any) => {
+          clearTimeout(timeout);
+          resolve(data);
+        });
+
+        socket.emit('workout:end');
+      });
+    }
+
+    // ── Reconcile final counts ──
+    let finalTotalReps = localTotalReps;
+    let finalValidReps = localValidReps;
+    let finalFormAccuracy = localFormAccuracy;
+    let verificationStatus = cameraEnabled ? 'ai_verified' : 'manual';
+
+    if (geminiVerification?.gemini_was_active) {
+      // Gemini was watching — use its verified counts
+      // Use the LOWER of local vs Gemini valid reps (prevents inflated counts)
+      finalTotalReps = localTotalReps; // Local total is the real count
+      finalValidReps = Math.min(localValidReps, geminiVerification.gemini_valid_reps);
+      finalFormAccuracy = geminiVerification.gemini_avg_form_score;
+      verificationStatus = 'ai_verified';
+
+      dispatch(addToast({
+        type: 'success',
+        message: `🤖 Gemini verified: ${geminiVerification.gemini_valid_reps}/${geminiVerification.gemini_total_reps} reps (${Math.round(geminiVerification.gemini_avg_form_score * 100)}% form)`,
+      }));
+    } else if (cameraEnabled) {
+      // Camera was on but Gemini wasn't available — use local counts
+      dispatch(addToast({ type: 'info', message: '📷 Verified by local AI pose detection' }));
+    }
+
+    // Stop camera/GPS
     stopCamera();
     stopGPS();
 
@@ -195,7 +266,7 @@ export default function WorkoutPage() {
       total_reps: finalTotalReps,
       valid_reps: finalValidReps,
       form_accuracy: finalFormAccuracy,
-      verification_status: cameraEnabled ? 'ai_verified' : 'manual',
+      verification_status: verificationStatus,
       gps_coordinates: capturedCoords,
     }));
 
@@ -204,7 +275,6 @@ export default function WorkoutPage() {
       setGpsCoords([]);
       dispatch(fetchDashboard());
 
-      // Play celebration sound + animation
       playSuccessSound();
       setShowCelebration(true);
       setTimeout(() => {
@@ -240,21 +310,60 @@ export default function WorkoutPage() {
   };
 
   const startGPS = () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      dispatch(addToast({ type: 'error', message: 'GPS not available on this device' }));
+      return;
+    }
+    // Clear any existing watch first
+    if (gpsWatchId !== null) {
+      navigator.geolocation.clearWatch(gpsWatchId);
+    }
+    setGpsCoords([]); // Reset coordinates for new session
+    
     const id = navigator.geolocation.watchPosition(
-      pos => setGpsCoords(prev => [...prev, {
-        latitude: pos.coords.latitude, longitude: pos.coords.longitude,
-        altitude: pos.coords.altitude || 0, accuracy: pos.coords.accuracy,
-        timestamp: new Date().toISOString(),
-      }]),
-      () => dispatch(addToast({ type: 'warning', message: 'GPS signal lost' })),
-      { enableHighAccuracy: true, maximumAge: 5000 }
+      pos => {
+        // Filter out inaccurate readings (> 30m accuracy = unreliable)
+        if (pos.coords.accuracy > 30) {
+          console.log(`⚠️ GPS reading too inaccurate (${pos.coords.accuracy}m), skipping`);
+          return;
+        }
+        
+        setGpsCoords(prev => {
+          const newCoord = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            altitude: pos.coords.altitude || 0,
+            accuracy: pos.coords.accuracy,
+            timestamp: new Date().toISOString(),
+          };
+          
+          // Skip if distance from last point is < 3 meters (GPS jitter)
+          if (prev.length > 0) {
+            const last = prev[prev.length - 1];
+            const dist = haversine(last.latitude, last.longitude, newCoord.latitude, newCoord.longitude);
+            if (dist < 0.003) { // < 3 meters
+              return prev; // Don't add this point
+            }
+          }
+          
+          return [...prev, newCoord];
+        });
+      },
+      (err) => {
+        console.error('GPS error:', err);
+        dispatch(addToast({ type: 'warning', message: `GPS error: ${err.message}` }));
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
     );
     setGpsWatchId(id);
+    dispatch(addToast({ type: 'success', message: '📍 GPS tracking started!' }));
   };
 
   const stopGPS = () => {
-    if (gpsWatchId !== null) { navigator.geolocation.clearWatch(gpsWatchId); setGpsWatchId(null); }
+    if (gpsWatchId !== null) {
+      navigator.geolocation.clearWatch(gpsWatchId);
+      setGpsWatchId(null);
+    }
   };
 
   const pts = estimatedPoints();
