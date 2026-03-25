@@ -7,6 +7,7 @@ import { logout, refreshBalance, fetchProfile } from '../store/slices/authSlice'
 import { toggleSidebar } from '../store/slices/uiSlice';
 import { useState, useEffect } from 'react';
 import { requestNotificationPermission, scheduleWorkoutReminder } from '../utils/notifications';
+import SimpleInstallButton from './ui/SimpleInstallButton';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -82,6 +83,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
+
+      {/* PWA Install Button */}
+      <SimpleInstallButton />
 
       {/* Mobile sidebar overlay */}
       <AnimatePresence>

@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Smartphone, Plus, Share, Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export default function SimpleInstallButton() {
   const [showModal, setShowModal] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   
   // Detect platform
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -14,8 +20,42 @@ export default function SimpleInstallButton() {
   // Don't show if already installed
   if (isStandalone) return null;
 
-  const handleClick = () => {
-    setShowModal(true);
+  useEffect(() => {
+    // Listen for install prompt (Chrome/Edge/Desktop browsers)
+    const handler = (e: Event) => {
+      console.log('PWA install prompt captured by SimpleInstallButton');
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleClick = async () => {
+    console.log('Install button clicked, deferredPrompt:', !!deferredPrompt);
+    
+    if (deferredPrompt) {
+      // Chrome/Edge automatic install
+      try {
+        await deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log('Install outcome:', outcome);
+        
+        if (outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+        } else {
+          console.log('User dismissed the install prompt');
+        }
+        setDeferredPrompt(null);
+      } catch (error) {
+        console.error('Install prompt error:', error);
+        setShowModal(true);
+      }
+    } else {
+      // Show manual instructions for iOS/Android or if prompt not available
+      setShowModal(true);
+    }
   };
 
   return (

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PWA Install Test - ZenithCity</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #020614;
+      color: #fff;
+    }
+    .status {
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #333;
+    }
+    .success { background: #0f4; color: #000; }
+    .error { background: #f04; color: #fff; }
+    .info { background: #04f; color: #fff; }
+    button {
+      padding: 12px 24px;
+      margin: 10px 5px;
+      border: none;
+      border-radius: 8px;
+      background: #00F5FF;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover { opacity: 0.8; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .log {
+      background: #111;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+      border-left: 3px solid #00F5FF;
+      padding-left: 10px;
+    }
+    h1 { color: #00F5FF; }
+    h2 { color: #00F5FF; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <h1>🚀 PWA Install Test</h1>
+  
+  <div id="status"></div>
+  
+  <h2>Installation</h2>
+  <button id="installBtn" disabled>Install App</button>
+  <button id="checkStatus">Check PWA Status</button>
+  <button id="clearLogs">Clear Logs</button>
+  
+  <h2>Event Log</h2>
+  <div id="log" class="log"></div>
+
+  <script>
+    let deferredPrompt = null;
+    const statusDiv = document.getElementById('status');
+    const installBtn = document.getElementById('installBtn');
+    const checkStatusBtn = document.getElementById('checkStatus');
+    const clearLogsBtn = document.getElementById('clearLogs');
+    const logDiv = document.getElementById('log');
+
+    function addLog(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.style.borderLeftColor = type === 'success' ? '#0f4' : type === 'error' ? '#f04' : '#00F5FF';
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logDiv.insertBefore(entry, logDiv.firstChild);
+    }
+
+    function showStatus(message, type = 'info') {
+      statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+    }
+
+    // Check if already installed
+    function checkPWAStatus() {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                          window.navigator.standalone === true;
+      
+      const platform = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS' :
+                      /Android/.test(navigator.userAgent) ? 'Android' : 'Desktop';
+      
+      addLog(`Platform: ${platform}`);
+      addLog(`Standalone mode: ${isStandalone}`);
+      addLog(`User agent: ${navigator.userAgent}`);
+      
+      if (isStandalone) {
+        showStatus('✅ App is installed and running as PWA!', 'success');
+        installBtn.disabled = true;
+        installBtn.textContent = 'Already Installed';
+      } else {
+        showStatus('ℹ️ App is running in browser mode', 'info');
+      }
+      
+      // Check service worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg) {
+            addLog(`Service Worker: Active (scope: ${reg.scope})`, 'success');
+          } else {
+            addLog('Service Worker: Not registered', 'error');
+          }
+        });
+      } else {
+        addLog('Service Worker: Not supported', 'error');
+      }
+    }
+
+    // Listen for install prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      addLog('✅ beforeinstallprompt event fired!', 'success');
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.disabled = false;
+      installBtn.textContent = 'Install App Now';
+      showStatus('✅ App is installable! Click "Install App Now" button.', 'success');
+    });
+
+    // Handle install button click
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) {
+        addLog('❌ No install prompt available', 'error');
+        showStatus('❌ Install prompt not available. Try on Chrome/Edge desktop or Android.', 'error');
+        return;
+      }
+
+      addLog('Triggering install prompt...');
+      
+      try {
+        await deferredPrompt.prompt();
+        addLog('Install prompt shown to user');
+        
+        const { outcome } = await deferredPrompt.userChoice;
+        addLog(`User choice: ${outcome}`, outcome === 'accepted' ? 'success' : 'error');
+        
+        if (outcome === 'accepted') {
+          showStatus('✅ App installed successfully!', 'success');
+          installBtn.disabled = true;
+          installBtn.textContent = 'Installed';
+        } else {
+          showStatus('ℹ️ Installation cancelled by user', 'info');
+        }
+        
+        deferredPrompt = null;
+      } catch (error) {
+        addLog(`❌ Install error: ${error.message}`, 'error');
+        showStatus(`❌ Install failed: ${error.message}`, 'error');
+      }
+    });
+
+    // App installed event
+    window.addEventListener('appinstalled', () => {
+      addLog('✅ App installed successfully!', 'success');
+      showStatus('✅ App has been installed!', 'success');
+      deferredPrompt = null;
+    });
+
+    // Check status button
+    checkStatusBtn.addEventListener('click', checkPWAStatus);
+
+    // Clear logs button
+    clearLogsBtn.addEventListener('click', () => {
+      logDiv.innerHTML = '';
+      addLog('Logs cleared');
+    });
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => {
+            addLog(`✅ Service Worker registered: ${reg.scope}`, 'success');
+          })
+          .catch(err => {
+            addLog(`❌ Service Worker registration failed: ${err}`, 'error');
+          });
+      });
+    }
+
+    // Initial status check
+    addLog('Page loaded, waiting for install prompt...');
+    checkPWAStatus();
+  </script>
+</body>
+</html>
