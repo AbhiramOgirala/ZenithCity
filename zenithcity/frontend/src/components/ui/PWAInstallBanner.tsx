@@ -36,6 +36,12 @@ export default function PWAInstallBanner() {
       return;
     }
 
+    // Check if prompt was already captured globally
+    if ((window as any).pwaDeferredPrompt) {
+      console.log('PWA install prompt already captured globally');
+      setDeferredPrompt((window as any).pwaDeferredPrompt);
+    }
+
     // Show banner on mobile devices after short delay
     const isMobile = iOS || android || /Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
     if (isMobile) {

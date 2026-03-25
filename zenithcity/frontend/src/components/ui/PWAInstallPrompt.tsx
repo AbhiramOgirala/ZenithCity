@@ -20,6 +20,12 @@ export default function PWAInstallPrompt() {
       return;
     }
 
+    // Check if prompt was already captured globally
+    if ((window as any).pwaDeferredPrompt) {
+      setDeferredPrompt((window as any).pwaDeferredPrompt);
+      setTimeout(() => setShowBanner(true), 3000);
+    }
+
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);

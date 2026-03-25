@@ -21,6 +21,12 @@ export default function SimpleInstallButton() {
   if (isStandalone) return null;
 
   useEffect(() => {
+    // Check if prompt was already captured globally
+    if ((window as any).pwaDeferredPrompt) {
+      console.log('PWA install prompt already captured globally');
+      setDeferredPrompt((window as any).pwaDeferredPrompt);
+    }
+
     // Listen for install prompt (Chrome/Edge/Desktop browsers)
     const handler = (e: Event) => {
       console.log('PWA install prompt captured by SimpleInstallButton');
