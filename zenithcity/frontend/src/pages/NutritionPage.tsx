@@ -71,11 +71,11 @@ export default function NutritionPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6 flex flex-col h-full overflow-hidden">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-6 flex flex-col h-full overflow-hidden">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start justify-between"><div><h1 className="text-2xl font-display font-bold text-white flex items-center gap-3"><span className="text-neon-orange text-3xl">🥗</span> AI Daily Nutrition</h1><p className="text-space-400 text-sm mt-1">Personalized meals optimized for <span className="text-neon-orange font-semibold">{plan.goal}</span>.</p></div><button onClick={handleRefresh} disabled={refreshing} className="glass-sm px-3 py-2 rounded-xl flex items-center gap-2 text-space-400 hover:text-white transition-all"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /><span className="text-xs font-mono">Regenerate</span></button></motion.div>
 
       {plan.diet_plan ? (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 overflow-y-auto pr-2 pb-6 flex-1 scrollbar-hide">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 overflow-y-auto pr-2 pb-6 flex-1 touch-scroll">
           {Object.entries(plan.diet_plan).map(([day, meals], idx) => (
             <motion.div key={day} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="glass p-5 rounded-2xl border border-neon-orange/20 flex flex-col h-full bg-space-900/40">
               <h3 className="font-display font-bold text-neon-orange border-b border-space-700/50 pb-3 mb-4 uppercase tracking-widest text-sm text-center">{day}</h3>
@@ -129,7 +129,7 @@ export default function NutritionPage() {
       {plan.tips && plan.tips.length > 0 && (
          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass p-5 space-y-3 bg-neon-yellow/5 border-neon-yellow/10">
            <h3 className="font-display font-semibold text-sm uppercase tracking-widest text-white flex items-center gap-2 pr-2 border-b border-white/5 pb-2 mb-2"><Zap className="w-4 h-4 text-neon-yellow fill-current" /> AI Nutrition Wisdom</h3>
-           <div className="grid sm:grid-cols-2 gap-3 pb-2 pr-2">
+           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2 pr-2">
              {plan.tips.map((tip, i) => (
                <div key={i} className="flex items-start gap-2.5 text-xs text-space-400"><span className="text-neon-yellow mt-0.5">•</span><span>{tip}</span></div>
              ))}

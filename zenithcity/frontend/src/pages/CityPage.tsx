@@ -202,7 +202,7 @@ export default function CityPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 3D View */}
-      <div className="flex-1 relative min-h-0" style={{ minHeight: '420px' }}>
+      <div className="flex-1 relative min-h-0" style={{ minHeight: '320px' }}>
         <Canvas
           camera={{ position: [22, 18, 22], fov: 48 }}
           style={{ background: '#020818' }}
@@ -240,7 +240,7 @@ export default function CityPage() {
         </Canvas>
 
         {/* Stats overlay */}
-        <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none">
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
           <div className="glass-sm px-3 py-2 flex items-center gap-2 text-xs font-mono">
             <Building2 className="w-3.5 h-3.5 text-neon-cyan" />
             <span className="text-white font-bold">{completedBuildings.length}</span>
@@ -282,7 +282,7 @@ export default function CityPage() {
         </div>
 
         {/* Balance overlay */}
-        <div className="absolute top-4 right-4 pointer-events-none">
+        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 pointer-events-none">
           <div className="glass-sm px-3 py-2 flex items-center gap-2 text-xs font-mono">
             <Zap className="w-3.5 h-3.5 text-neon-yellow" />
             <span className="text-neon-yellow font-bold">{balance.toLocaleString()} pts</span>
@@ -392,7 +392,9 @@ export default function CityPage() {
         {!placementType && (
           <button
             onClick={() => dispatch(setBuildingPanelOpen(!buildingPanelOpen))}
-            className="absolute bottom-4 right-4 btn-primary flex items-center gap-2"
+            className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 btn-primary flex items-center gap-2 text-xs sm:text-sm"
+            aria-label={buildingPanelOpen ? 'Close city management panel' : 'Open city management panel'}
+            aria-expanded={buildingPanelOpen}
           >
             <Plus className="w-4 h-4" />
             {buildingPanelOpen ? 'Close' : 'Manage City'}
@@ -409,7 +411,7 @@ export default function CityPage() {
             exit={{ height: 0, opacity: 0 }}
             className="border-t border-white/5 overflow-hidden flex-shrink-0"
           >
-            <div className="p-4 glass" style={{ borderRadius: 0 }}>
+            <div className="p-3 sm:p-4 glass" style={{ borderRadius: 0 }}>
               {/* Tabs */}
               <div className="flex gap-1 glass-sm p-1 rounded-xl w-fit mb-4">
                 {[

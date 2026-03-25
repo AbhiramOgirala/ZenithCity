@@ -121,7 +121,7 @@ export default function WorkoutPlanPage() {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -129,7 +129,7 @@ export default function WorkoutPlanPage() {
         className="flex items-start justify-between"
       >
         <div>
-          <h1 className="text-2xl font-display font-bold text-white">Your Workout Plan</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold text-white">Your Workout Plan</h1>
           <p className="text-space-400 text-sm mt-0.5">
             Personalized for <span className="text-neon-cyan font-semibold">{plan.goal}</span> &bull; {plan.level} level
           </p>
@@ -148,21 +148,21 @@ export default function WorkoutPlanPage() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-3 gap-3"
+        className="grid grid-cols-3 gap-2 sm:gap-3"
       >
         <div className="glass-sm p-4 text-center rounded-xl">
           <Target className="w-5 h-5 text-neon-cyan mx-auto mb-2" />
-          <p className="font-display font-bold text-white text-lg">{plan.goal}</p>
+          <p className="font-display font-bold text-white text-sm sm:text-lg">{plan.goal}</p>
           <p className="text-xs text-space-500">Goal</p>
         </div>
         <div className="glass-sm p-4 text-center rounded-xl">
           <Calendar className="w-5 h-5 text-neon-orange mx-auto mb-2" />
-          <p className="font-display font-bold text-white text-lg">{plan.days_per_week}</p>
+          <p className="font-display font-bold text-white text-sm sm:text-lg">{plan.days_per_week}</p>
           <p className="text-xs text-space-500">Days / Week</p>
         </div>
         <div className="glass-sm p-4 text-center rounded-xl">
           <Zap className="w-5 h-5 text-neon-yellow mx-auto mb-2" />
-          <p className="font-display font-bold text-white text-lg capitalize">{plan.level}</p>
+          <p className="font-display font-bold text-white text-sm sm:text-lg capitalize">{plan.level}</p>
           <p className="text-xs text-space-500">Level</p>
         </div>
       </motion.div>
@@ -184,7 +184,9 @@ export default function WorkoutPlanPage() {
             >
               <button
                 onClick={() => setExpandedDay(isExpanded ? null : day.day)}
-                className="w-full flex items-center justify-between p-4 hover:bg-white/3 transition-colors"
+                className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-white/3 transition-colors"
+                aria-expanded={isExpanded}
+                aria-controls={`day-${day.day}`}
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${

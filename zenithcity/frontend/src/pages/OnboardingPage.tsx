@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Zap, ArrowRight, Ruler, Scale, 
   Calendar, HeartPulse, Target, 
-  Dumbbell, Sparkles, Coffee, Utensils
+  Dumbbell, Sparkles, Coffee, Utensils, Trophy
 } from 'lucide-react';
 import { fetchProfile } from '../store/slices/authSlice';
 import { addToast } from '../store/slices/uiSlice';
@@ -110,9 +110,9 @@ export default function OnboardingPage() {
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-neon-cyan/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-neon-purple/5 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-lg relative z-10">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-2">
+      <div className="w-full max-w-lg relative z-10 px-2">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="flex items-center justify-center gap-2 mb-2" role="progressbar" aria-valuenow={step} aria-valuemin={1} aria-valuemax={4} aria-label={`Step ${step} of 4`}>
             {steps.map((_, i) => (
               <div 
                 key={i} 
@@ -122,7 +122,7 @@ export default function OnboardingPage() {
               />
             ))}
           </div>
-          <h1 className="text-2xl font-display font-black text-white uppercase tracking-wider">
+          <h1 className="text-xl sm:text-2xl font-display font-black text-white uppercase tracking-wider">
             {steps[step-1].title}
           </h1>
           <p className="text-space-400 text-sm">{steps[step-1].desc}</p>
@@ -132,7 +132,7 @@ export default function OnboardingPage() {
           key={step}
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="glass p-8 space-y-6"
+          className="glass p-5 sm:p-8 space-y-4 sm:space-y-6"
         >
           <AnimatePresence mode="wait">
             {step === 1 && (

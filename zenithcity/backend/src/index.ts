@@ -9,6 +9,7 @@ dotenv.config();
 
 import { initRedis } from './config/redis';
 import { scheduleCityDeclineJob } from './jobs/cityDecline';
+import { setupGeminiSocket } from './socket/geminiLive';
 
 import authRoutes from './routes/auth';
 import workoutRoutes from './routes/workouts';
@@ -50,6 +51,8 @@ app.use('/api/workout-plan', workoutPlanRoutes);
 app.get('/health', (_, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // WebSocket
+setupGeminiSocket(io);
+
 io.on('connection', (socket) => {
   const userId = socket.handshake.auth.userId;
   if (userId) {

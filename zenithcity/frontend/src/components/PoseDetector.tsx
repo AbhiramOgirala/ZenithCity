@@ -7,9 +7,9 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { CheckCircle, AlertCircle, Activity, Zap, Eye } from 'lucide-react';
+import { CheckCircle, AlertCircle, Activity, Zap, Eye, BrainCircuit } from 'lucide-react';
 import { AIStats } from '../pages/WorkoutPage';
-
+import { getSocket } from '../services/socket';
 interface Props {
   stream: MediaStream;
   exerciseType: string;
@@ -411,14 +411,64 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
   const poseRef   = useRef<any>(null);
   const statsRef  = useRef({ totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase });
   const activeRef = useRef(isActive);
+  const lastGeminiUpdate = useRef(0);
+  const geminiScoreRef = useRef(1.0);
   const [feedback, setFeedback]       = useState('Position yourself in frame');
   const [formScore, setFormScore]     = useState(1.0);
   const [loaded, setLoaded]           = useState(false);
   const [loadError, setLoadError]     = useState('');
   const [repFlash, setRepFlash]       = useState(false);
+  const [isGeminiActive, setIsGeminiActive] = useState(false);
 
   // Keep activeRef in sync
   useEffect(() => { activeRef.current = isActive; }, [isActive]);
+
+  // Setup Gemini Socket listener
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    
+    // Listen for Gemini AI streaming analysis
+    socket.on('workout:analysis', (data: any) => {
+      setIsGeminiActive(true);
+      if (!activeRef.current) return;
+
+      // Gemini is the source of truth for rep count
+      const newTotal = Math.max(statsRef.current.totalReps, data.rep_count);
+      const diff = newTotal - statsRef.current.totalReps;
+      
+      if (diff > 0) {
+        statsRef.current.totalReps = newTotal;
+        // Count valid only if form is good OR gemini says it is valid
+        if (data.is_valid_form || data.form_score >= 0.85) {
+            statsRef.current.validReps += diff;
+            setRepFlash(true);
+            setTimeout(() => setRepFlash(false), 400);
+        }
+      }
+
+      // We preserve the phase provided by Gemini
+      statsRef.current.phase = data.current_phase || statsRef.current.phase;
+      
+      geminiScoreRef.current = data.form_score ?? 1.0;
+      setFormScore(geminiScoreRef.current);
+      setFeedback(`[AI Coach]: ${data.feedback}`);
+      
+      onStatsUpdate({
+        totalReps: statsRef.current.totalReps,
+        validReps: statsRef.current.validReps,
+        formAccuracy: geminiScoreRef.current,
+        feedback: data.feedback,
+        poseLandmarks: [], // Handled by mediapipe
+        isActive: true,
+      });
+    });
+
+    return () => {
+      socket.off('workout:analysis');
+      socket.emit('workout:end');
+    };
+  }, [onStatsUpdate]);
 
   // Attach stream to video
   useEffect(() => {
@@ -506,36 +556,51 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       if (mirroredLms.length && activeRef.current) {
         const analysis = analyzeExercise(exerciseType, mirroredLms, statsRef.current.phase as RepPhase);
 
-        statsRef.current.formScore = analysis.formScore;
-        statsRef.current.phase     = analysis.phase;
-
-        if (analysis.repComplete) {
-          statsRef.current.totalReps++;
-          console.log(`🔄 Rep detected! Form score: ${(analysis.formScore * 100).toFixed(0)}%`);
+        // We only use MediaPipe for instant visual feedback on phase/form score.
+        // We NO LONGER increment reps locally. We trust Gemini for that.
+        
+        // Only update local form score if Gemini hasn't taken over recently
+        if (!isGeminiActive) {
+          statsRef.current.formScore = analysis.formScore;
+          statsRef.current.phase     = analysis.phase;
+          setFormScore(analysis.formScore);
+          setFeedback(analysis.feedback);
           
-          if (analysis.formScore >= 0.85) {
-            statsRef.current.validReps++;
-            console.log(`✅ VALID REP #${statsRef.current.validReps} counted! (Form: ${(analysis.formScore * 100).toFixed(0)}%)`);
-            setRepFlash(true);
-            setTimeout(() => setRepFlash(false), 400);
-          } else {
-            console.log(`❌ Rep rejected - form too low: ${(analysis.formScore * 100).toFixed(0)}% (need ≥85%)`);
+          onStatsUpdate({
+            totalReps: statsRef.current.totalReps,
+            validReps: statsRef.current.validReps,
+            formAccuracy: analysis.formScore,
+            feedback: analysis.feedback,
+            poseLandmarks: mirroredLms,
+            isActive: true,
+          });
+        } else {
+          // If Gemini is active, we just do a silent update of landmarks
+          onStatsUpdate({
+            totalReps: statsRef.current.totalReps,
+            validReps: statsRef.current.validReps,
+            formAccuracy: geminiScoreRef.current, // Use Gemini's score
+            feedback: feedback, // Keep Gemini's feedback
+            poseLandmarks: mirroredLms,
+            isActive: true,
+          });
+        }
+
+        // ─── Gemini Live Stream (Hybrid Mode) ───
+        // Only capture & send frame to Gemini every 400ms if active
+        const now = Date.now();
+        if (activeRef.current && (now - lastGeminiUpdate.current > 400)) {
+          lastGeminiUpdate.current = now;
+          const socket = getSocket();
+          if (socket?.connected && video) {
+            // Compress heavily for speed ~25kb per frame
+            const frameSrc = canvas.toDataURL('image/jpeg', 0.5);
+            const base64Data = frameSrc.replace(/^data:image\/jpeg;base64,/, '');
+            socket.emit('workout:frame', { frame: base64Data, exerciseType });
           }
         }
 
-        setFormScore(analysis.formScore);
-        setFeedback(analysis.feedback);
-
-        onStatsUpdate({
-          totalReps: statsRef.current.totalReps,
-          validReps: statsRef.current.validReps,
-          formAccuracy: analysis.formScore,
-          feedback: analysis.feedback,
-          poseLandmarks: mirroredLms,
-          isActive: true,
-        });
-
-        drawSkeleton(ctx, mirroredLms, analysis.formScore, w, h);
+        drawSkeleton(ctx, mirroredLms, isGeminiActive ? geminiScoreRef.current : analysis.formScore, w, h);
       } else if (!activeRef.current && mirroredLms.length) {
         // Preview mode — just draw skeleton
         drawSkeleton(ctx, mirroredLms, 1.0, w, h);
@@ -597,9 +662,11 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       {loaded && (
         <>
           {/* LIVE badge */}
-          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 bg-neon-pink/20 border border-neon-pink/40 rounded-lg">
-            <div className="w-1.5 h-1.5 rounded-full bg-neon-pink animate-pulse" />
-            <span className="text-xs text-neon-pink font-mono font-bold">LIVE AI</span>
+          <div className={`absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 border rounded-lg ${
+            isGeminiActive ? 'bg-neon-cyan/20 border-neon-cyan/40 text-neon-cyan' : 'bg-neon-pink/20 border-neon-pink/40 text-neon-pink'
+          }`}>
+            {isGeminiActive ? <BrainCircuit className="w-3.5 h-3.5 animate-pulse" /> : <div className="w-1.5 h-1.5 rounded-full bg-neon-pink animate-pulse" />}
+            <span className="text-xs font-mono font-bold">{isGeminiActive ? 'GEMINI LIVE' : 'LIVE AI'}</span>
           </div>
 
           {/* Form score badge */}
