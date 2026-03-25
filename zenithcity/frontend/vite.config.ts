@@ -11,7 +11,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
+    // Only use proxy in development when VITE_API_BASE_URL is not set
+    proxy: process.env.VITE_API_BASE_URL ? {} : {
       '/api': 'http://127.0.0.1:3001',
       '/socket.io': {
         target: 'http://127.0.0.1:3001',

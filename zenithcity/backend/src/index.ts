@@ -10,6 +10,7 @@ dotenv.config();
 import { initRedis } from './config/redis';
 import { scheduleCityDeclineJob } from './jobs/cityDecline';
 import { setupGeminiSocket } from './socket/geminiLive';
+import { setSocketInstance } from './utils/socket';
 
 import authRoutes from './routes/auth';
 import workoutRoutes from './routes/workouts';
@@ -20,7 +21,6 @@ import battleRoutes from './routes/battles';
 import pointsRoutes from './routes/points';
 import dashboardRoutes from './routes/dashboard';
 import feedbackRoutes from './routes/feedback';
-import workoutPlanRoutes from './routes/workoutPlan';
 import watchSyncRoutes from './routes/watchSync';
 
 const app = express();
@@ -53,7 +53,6 @@ app.use('/api/battles', battleRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/feedback', feedbackRoutes);
-app.use('/api/workout-plan', workoutPlanRoutes);
 app.use('/api/watch', watchSyncRoutes);
 
 
