@@ -218,12 +218,12 @@ export default function WorkoutPage() {
     } | null = null;
 
     if (socket?.connected && cameraEnabled) {
-      // Wait for Gemini's verification response (up to 2 seconds)
+      // Wait for Gemini's verification response (up to 5 seconds for one-shot API call)
       geminiVerification = await new Promise((resolve) => {
         const timeout = setTimeout(() => {
           socket.off('workout:verification');
           resolve(null); // Timeout — use local counts
-        }, 2000);
+        }, 5000);
 
         socket.once('workout:verification', (data: any) => {
           clearTimeout(timeout);

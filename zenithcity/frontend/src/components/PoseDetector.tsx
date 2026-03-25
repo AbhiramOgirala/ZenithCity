@@ -4,12 +4,17 @@
  * Uses @mediapipe/pose loaded from CDN (no npm install needed).
  * Performs real joint-angle analysis for each exercise type.
  * Only counts reps when form accuracy >= 85%.
+ * 
+ * Architecture: 100% local MediaPipe for real-time rep counting.
+ * Gemini is used ONLY for one-shot verification when workout ends.
+ * This prevents the infinite session create/close loops.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { CheckCircle, AlertCircle, Activity, Zap, Eye, BrainCircuit } from 'lucide-react';
+import { CheckCircle, AlertCircle, Eye } from 'lucide-react';
 import { AIStats } from '../pages/WorkoutPage';
 import { getSocket } from '../services/socket';
+
 interface Props {
   stream: MediaStream;
   exerciseType: string;
@@ -72,47 +77,60 @@ function analyzeSquat(lms: any[], prevPhase: RepPhase): AnalysisResult {
   // Check knee alignment (shouldn't cave inward)
   const kneeWidth = Math.abs(lKnee.x - rKnee.x);
   const hipWidth  = Math.abs(lHip.x  - rHip.x);
-  const kneesCaved = kneeWidth < hipWidth * 0.7;
+  const kneesCaved = kneeWidth < hipWidth * 0.6;
 
   // Check if person is actually standing (not sitting/lying)
   const isStanding = lShoulder && rShoulder && 
-    (lShoulder.y < lHip.y - 0.1) && (rShoulder.y < rHip.y - 0.1);
+    (lShoulder.y < lHip.y - 0.08) && (rShoulder.y < rHip.y - 0.08);
 
   if (!isStanding) {
-    return { repComplete: false, formScore: 0, feedback: 'Stand up to perform squats', phase: prevPhase };
+    return { repComplete: false, formScore: 0.5, feedback: 'Stand up to perform squats', phase: prevPhase };
   }
 
   let formScore = 1.0;
   let feedback  = '';
 
-  // Phase detection - STRICT thresholds
-  const isDeepDown = avgKneeAngle < 100;  // Must go below 100° to count as down
-  const isFullyUp  = avgKneeAngle > 165;  // Must extend above 165° to count as up
+  // Phase detection - RELAXED thresholds for real-world movement
+  const isDown = avgKneeAngle < 130;   // Relaxed: 130° instead of 100° (catches partial squats too)
+  const isDeep = avgKneeAngle < 100;   // Bonus: deep squat
+  const isUp   = avgKneeAngle > 160;   // Standing position
   
   let newPhase: RepPhase = prevPhase;
   
-  if (isDeepDown) {
+  if (isDown) {
     newPhase = 'down';
-  } else if (isFullyUp) {
+  } else if (isUp) {
     newPhase = 'up';
   }
 
-  // Form scoring
-  if (isDeepDown) {
-    if (avgKneeAngle > 90) { formScore -= 0.2; feedback = 'Go deeper — knees to 90°'; }
-    if (kneesCaved) { formScore -= 0.3; feedback = 'Knees caving — push them out'; }
-    if (!feedback) feedback = '✓ Good depth!';
-  } else if (isFullyUp) {
-    if (kneesCaved) { formScore -= 0.25; feedback = 'Drive knees outward'; }
-    if (!feedback) feedback = 'Stand tall — ready for next rep';
+  // Form scoring — graduated, NOT binary
+  if (isDown) {
+    // In the squat position
+    if (isDeep) {
+      feedback = '✓ Great depth!';
+      formScore = 1.0;
+    } else if (avgKneeAngle < 110) {
+      feedback = '✓ Good squat!';
+      formScore = 0.95;
+    } else {
+      feedback = 'Try going a bit deeper';
+      formScore = 0.85; // Still counts as valid
+    }
+    if (kneesCaved) { formScore -= 0.2; feedback = 'Knees caving — push them out'; }
+  } else if (isUp) {
+    // Standing position
+    feedback = 'Ready for next rep';
+    formScore = 1.0;
+    if (kneesCaved) { formScore -= 0.15; feedback = 'Drive knees outward'; }
   } else {
-    // In between - not a valid position
-    formScore = 0.5;
-    feedback = avgKneeAngle < 140 ? 'Go all the way down!' : 'Stand fully upright!';
+    // TRANSITION — user is moving between positions
+    // Give a reasonable score so the UI doesn't flash red constantly
+    formScore = 0.88;
+    feedback = avgKneeAngle < 145 ? 'Going down... keep going!' : 'Stand tall to complete rep';
   }
 
-  // Only count rep if form score is good AND we completed full range
-  const repComplete = prevPhase === 'down' && isFullyUp && formScore >= 0.85;
+  // Rep completed: went from down phase to standing up
+  const repComplete = prevPhase === 'down' && isUp;
   
   return { repComplete, formScore: Math.max(0, formScore), feedback, phase: newPhase };
 }
@@ -132,10 +150,10 @@ function analyzePushup(lms: any[], prevPhase: RepPhase): AnalysisResult {
   }
 
   // Check if person is in plank/pushup position (horizontal body)
-  const isHorizontal = lShoulder && lHip && Math.abs(lShoulder.y - lHip.y) < 0.15;
+  const isHorizontal = lShoulder && lHip && Math.abs(lShoulder.y - lHip.y) < 0.2;
   
   if (!isHorizontal) {
-    return { repComplete: false, formScore: 0, feedback: 'Get into pushup position (plank)', phase: prevPhase };
+    return { repComplete: false, formScore: 0.5, feedback: 'Get into pushup position (plank)', phase: prevPhase };
   }
 
   const leftElbowAngle  = getAngle(lShoulder, lElbow, lWrist);
@@ -148,32 +166,38 @@ function analyzePushup(lms: any[], prevPhase: RepPhase): AnalysisResult {
   let formScore = 1.0;
   let feedback  = '';
 
-  // STRICT phase detection
-  const isDeepDown = avgElbow < 90;   // Must bend elbows below 90°
-  const isFullyUp  = avgElbow > 160;  // Must extend arms above 160°
+  // RELAXED phase detection
+  const isDown = avgElbow < 110;   // Relaxed from 90
+  const isUp   = avgElbow > 155;   // Relaxed from 160
   
   let newPhase: RepPhase = prevPhase;
   
-  if (isDeepDown) {
+  if (isDown) {
     newPhase = 'down';
-  } else if (isFullyUp) {
+  } else if (isUp) {
     newPhase = 'up';
   }
 
-  if (isDeepDown) {
-    if (avgElbow > 80) { formScore -= 0.15; feedback = 'Lower chest closer to ground'; }
-    if (hipSag)        { formScore -= 0.3;  feedback = 'Hips sagging — engage core!'; }
-    if (!feedback) feedback = '✓ Great depth!';
-  } else if (isFullyUp) {
-    if (hipSag) { formScore -= 0.2; feedback = 'Keep core tight'; }
-    if (!feedback) feedback = 'Arms extended — next rep!';
+  if (isDown) {
+    if (avgElbow < 90) {
+      feedback = '✓ Great depth!';
+      formScore = 1.0;
+    } else {
+      feedback = '✓ Good pushup!';
+      formScore = 0.9;
+    }
+    if (hipSag) { formScore -= 0.25; feedback = 'Hips sagging — engage core!'; }
+  } else if (isUp) {
+    feedback = 'Arms extended — next rep!';
+    formScore = 1.0;
+    if (hipSag) { formScore -= 0.15; feedback = 'Keep core tight'; }
   } else {
-    formScore = 0.5;
-    feedback = avgElbow < 130 ? 'Push all the way up!' : 'Lower down fully!';
+    // Transition
+    formScore = 0.88;
+    feedback = avgElbow < 135 ? 'Pushing up...' : 'Lower down...';
   }
 
-  // Only count if form is good and full range completed
-  const repComplete = prevPhase === 'down' && isFullyUp && formScore >= 0.85;
+  const repComplete = prevPhase === 'down' && isUp;
   
   return { repComplete, formScore: Math.max(0, formScore), feedback, phase: newPhase };
 }
@@ -190,47 +214,49 @@ function analyzeLunge(lms: any[], prevPhase: RepPhase): AnalysisResult {
     return { repComplete: false, formScore: 0, feedback: 'Stand sideways — need full body visible', phase: prevPhase };
   }
 
-  // Check if person is standing (not sitting)
   const isStanding = lShoulder && lHip && (lShoulder.y < lHip.y - 0.05);
   
   if (!isStanding) {
-    return { repComplete: false, formScore: 0, feedback: 'Stand up to perform lunges', phase: prevPhase };
+    return { repComplete: false, formScore: 0.5, feedback: 'Stand up to perform lunges', phase: prevPhase };
   }
 
-  // Use front leg (the one more bent)
   const leftKneeAngle  = getAngle(lHip, lKnee, lAnkle);
   const rightKneeAngle = getAngle(rHip, rKnee, lms[LM.RIGHT_ANKLE] || lAnkle);
-  const kneeAngle = Math.min(leftKneeAngle, rightKneeAngle); // Use the more bent knee
+  const kneeAngle = Math.min(leftKneeAngle, rightKneeAngle);
 
   let formScore = 1.0;
   let feedback  = '';
 
-  // STRICT phase detection
-  const isDeepDown = kneeAngle < 100;  // Must go below 100°
-  const isFullyUp  = kneeAngle > 165;  // Must stand fully upright
+  // RELAXED phase detection
+  const isDown = kneeAngle < 120;  // Relaxed from 100
+  const isUp   = kneeAngle > 160;  // Relaxed from 165
   
   let newPhase: RepPhase = prevPhase;
   
-  if (isDeepDown) {
+  if (isDown) {
     newPhase = 'down';
-  } else if (isFullyUp) {
+  } else if (isUp) {
     newPhase = 'up';
   }
 
-  if (isDeepDown) {
-    if (kneeAngle > 90) { formScore -= 0.2; feedback = 'Lower your back knee closer to the floor'; }
-    // Check knee over toe (knee shouldn't pass ankle)
-    if (lKnee.x > lAnkle.x + 0.05) { formScore -= 0.25; feedback = 'Front knee behind toes!'; }
-    if (!feedback) feedback = '✓ Good lunge depth!';
-  } else if (isFullyUp) {
+  if (isDown) {
+    if (kneeAngle < 100) {
+      feedback = '✓ Great lunge depth!';
+      formScore = 1.0;
+    } else {
+      feedback = '✓ Good lunge!';
+      formScore = 0.9;
+    }
+    if (lKnee.x > lAnkle.x + 0.06) { formScore -= 0.2; feedback = 'Front knee behind toes!'; }
+  } else if (isUp) {
     feedback = 'Extend fully between reps';
+    formScore = 1.0;
   } else {
-    formScore = 0.5;
-    feedback = kneeAngle < 140 ? 'Go deeper!' : 'Stand fully upright!';
+    formScore = 0.88;
+    feedback = kneeAngle < 140 ? 'Going down...' : 'Stand fully upright!';
   }
 
-  // Only count if form is good and full range completed
-  const repComplete = prevPhase === 'down' && isFullyUp && formScore >= 0.85;
+  const repComplete = prevPhase === 'down' && isUp;
   
   return { repComplete, formScore: Math.max(0, formScore), feedback, phase: newPhase };
 }
@@ -242,36 +268,27 @@ function analyzeJumpingJack(lms: any[], prevPhase: RepPhase): AnalysisResult {
   const rWrist    = lms[LM.RIGHT_WRIST];
   const lAnkle    = lms[LM.LEFT_ANKLE];
   const rAnkle    = lms[LM.RIGHT_ANKLE];
-  const lElbow    = lms[LM.LEFT_ELBOW];
-  const rElbow    = lms[LM.RIGHT_ELBOW];
 
   if (!lShoulder || !rShoulder || !lAnkle || !rAnkle || !lWrist || !rWrist) {
     return { repComplete: false, formScore: 0, feedback: 'Step back — need full body visible', phase: prevPhase };
   }
 
-  // Arms must be ABOVE shoulders (not just slightly raised)
-  const leftArmUp  = lWrist.y < lShoulder.y - 0.15;
-  const rightArmUp = rWrist.y < rShoulder.y - 0.15;
-  const armsUp     = leftArmUp && rightArmUp;
-
-  // Arms must be WIDE (not just up, but spread out)
-  const armsWide = lWrist && rWrist && Math.abs(lWrist.x - rWrist.x) > 0.4;
-
-  // Legs must be SIGNIFICANTLY wider than shoulder width
+  // Arms above shoulders
+  const armsUp = lWrist.y < lShoulder.y - 0.1 && rWrist.y < rShoulder.y - 0.1;
+  
+  // Legs wider than shoulders
   const shoulderWidth = Math.abs(lShoulder.x - rShoulder.x);
   const legWidth      = Math.abs(lAnkle.x - rAnkle.x);
-  const legsWide      = legWidth > shoulderWidth * 2.0; // Must be 2x shoulder width
+  const legsWide      = legWidth > shoulderWidth * 1.5;  // Relaxed from 2.0
 
-  // Arms must be DOWN (below shoulders)
-  const leftArmDown  = lWrist.y > lShoulder.y + 0.05;
-  const rightArmDown = rWrist.y > rShoulder.y + 0.05;
-  const armsDown     = leftArmDown && rightArmDown;
+  // Arms down
+  const armsDown = lWrist.y > lShoulder.y && rWrist.y > rShoulder.y;
 
-  // Legs must be CLOSE together (feet nearly touching)
-  const legsClosed = legWidth < shoulderWidth * 0.8;
+  // Legs close together
+  const legsClosed = legWidth < shoulderWidth * 1.0;  // Relaxed from 0.8
 
-  // OPEN position: arms up AND wide, legs wide
-  const isOpen = armsUp && armsWide && legsWide;
+  // OPEN position: arms up, legs wide
+  const isOpen = armsUp && legsWide;
   
   // CLOSED position: arms down, legs together
   const isClosed = armsDown && legsClosed;
@@ -279,33 +296,32 @@ function analyzeJumpingJack(lms: any[], prevPhase: RepPhase): AnalysisResult {
   const newPhase: RepPhase = isOpen ? 'up' : isClosed ? 'down' : prevPhase;
 
   let feedback  = '';
-  let formScore = 0.0;
+  let formScore = 0.88; // Default transition score
 
   if (isOpen) {
     feedback = '✓ Full star position!';
     formScore = 1.0;
   } else if (isClosed) {
-    feedback = 'Jump and spread arms & legs!';
+    feedback = 'Jump and spread!';
     formScore = 1.0;
   } else {
-    // Partial movement - give specific feedback
-    if (!armsUp && !armsDown) {
-      feedback = 'Raise arms all the way up!';
-      formScore = 0.3;
-    } else if (!armsWide && armsUp) {
-      feedback = 'Spread arms wider!';
-      formScore = 0.5;
-    } else if (!legsWide && !legsClosed) {
-      feedback = 'Jump higher — spread legs wider!';
-      formScore = 0.4;
+    // Partial — give specific feedback but don't crush the score
+    if (armsUp && !legsWide) {
+      feedback = 'Spread legs wider!';
+      formScore = 0.7;
+    } else if (!armsUp && legsWide) {
+      feedback = 'Raise arms higher!';
+      formScore = 0.7;
+    } else if (!armsUp && !armsDown) {
+      feedback = 'Raise arms all the way!';
+      formScore = 0.6;
     } else {
-      feedback = 'Complete the full jumping jack motion';
-      formScore = 0.2;
+      feedback = 'Complete the full motion';
+      formScore = 0.85;
     }
   }
 
-  // Only count rep if we went from FULLY OPEN to FULLY CLOSED
-  const repComplete = prevPhase === 'up' && isClosed && formScore >= 0.85;
+  const repComplete = prevPhase === 'up' && isClosed;
   
   return { repComplete, formScore, feedback, phase: newPhase };
 }
@@ -318,11 +334,6 @@ function analyzePlank(lms: any[]): AnalysisResult {
   if (!lShoulder || !lHip || !lAnkle) {
     return { repComplete: false, formScore: 0, feedback: 'Lie flat — camera should see your side', phase: 'hold' };
   }
-
-  // Body should be nearly horizontal
-  const bodyLineAngle = Math.abs(
-    Math.atan2(lAnkle.y - lShoulder.y, lAnkle.x - lShoulder.x) * (180 / Math.PI)
-  );
 
   const hipSag   = lHip.y > Math.max(lShoulder.y, lAnkle.y) + 0.06;
   const hipHigh  = lHip.y < Math.min(lShoulder.y, lAnkle.y) - 0.06;
@@ -409,104 +420,45 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
   const videoRef  = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const poseRef   = useRef<any>(null);
-  const statsRef  = useRef({ totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase });
+  const statsRef  = useRef({ totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase, startTime: 0 });
   const activeRef = useRef(isActive);
-  const lastGeminiUpdate = useRef(0);
-  const lastRepTime = useRef(0); // Cooldown to prevent double-counting
+  const lastRepTime = useRef(0);
   const lastSpokenFeedback = useRef('');
   const lastSpokenTime = useRef(0);
-  const geminiScoreRef = useRef(1.0);
+  const lastProgressUpdate = useRef(0);
+  const recentFormScores = useRef<number[]>([]);
   const exerciseRef = useRef(exerciseType);
   const [feedback, setFeedback]       = useState('Position yourself in frame');
   const [formScore, setFormScore]     = useState(1.0);
   const [loaded, setLoaded]           = useState(false);
   const [loadError, setLoadError]     = useState('');
   const [repFlash, setRepFlash]       = useState(false);
-  const [isGeminiActive, setIsGeminiActive] = useState(false);
-  const [geminiRepCount, setGeminiRepCount] = useState({ total: 0, valid: 0 });
 
-  // Keep activeRef in sync
-  useEffect(() => { activeRef.current = isActive; }, [isActive]);
+  // Keep activeRef in sync and initialize start time when it becomes active
+  useEffect(() => { 
+    if (isActive && !activeRef.current) {
+      statsRef.current.startTime = Date.now();
+    }
+    activeRef.current = isActive; 
+  }, [isActive]);
 
   // Reset stats when exercise type changes
   useEffect(() => {
     if (exerciseRef.current !== exerciseType) {
       exerciseRef.current = exerciseType;
-      statsRef.current = { totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase };
+      statsRef.current = { totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase, startTime: isActive ? Date.now() : 0 };
       lastRepTime.current = 0;
+      recentFormScores.current = [];
       onStatsUpdate({
         totalReps: 0, validReps: 0, formAccuracy: 0,
         feedback: 'Position yourself in frame', poseLandmarks: [], isActive: false,
       });
     }
-  }, [exerciseType, onStatsUpdate]);
-
-  // Setup Gemini Socket listener — coaching feedback only (reps counted locally by MediaPipe)
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-    
-    let geminiHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
-    
-    const resetGeminiHeartbeat = () => {
-      if (geminiHeartbeatTimer) clearTimeout(geminiHeartbeatTimer);
-      geminiHeartbeatTimer = setTimeout(() => {
-        setIsGeminiActive(false);
-      }, 5000);
-    };
-
-    // Gemini sends per-frame analysis — use it ONLY for coaching feedback & form score overlay
-    socket.on('workout:analysis', (data: any) => {
-      setIsGeminiActive(true);
-      resetGeminiHeartbeat();
-      if (!activeRef.current) return;
-
-      // Use Gemini's form score as the displayed score (more accurate than local)
-      geminiScoreRef.current = data.form_score ?? geminiScoreRef.current;
-      setFormScore(geminiScoreRef.current);
-      
-      // Show Gemini's coaching feedback
-      if (data.feedback) {
-        setFeedback(`🤖 ${data.feedback}`);
-        
-        // Voice Coaching: Speak feedback if form is poor and we haven't spoken recently (5s debounce)
-        const now = Date.now();
-        const score = data.form_score ?? 1.0;
-        
-        if (activeRef.current && score < 0.85 && data.feedback !== 'Tracking...') {
-          if (data.feedback !== lastSpokenFeedback.current || (now - lastSpokenTime.current > 5000)) {
-            lastSpokenFeedback.current = data.feedback;
-            lastSpokenTime.current = now;
-            
-            // Cancel any ongoing speech and speak the new correction
-            if ('speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-              const utterance = new SpeechSynthesisUtterance(data.feedback);
-              utterance.rate = 1.1; // Speak slightly faster for workouts
-              utterance.pitch = 1.0;
-              window.speechSynthesis.speak(utterance);
-            }
-          }
-        }
-      }
-
-      // Track Gemini's running count for reference (displayed as secondary badge)
-      setGeminiRepCount({
-        total: data.gemini_total_reps ?? 0,
-        valid: data.gemini_valid_reps ?? 0,
-      });
-    });
-
-    return () => {
-      if (geminiHeartbeatTimer) clearTimeout(geminiHeartbeatTimer);
-      socket.off('workout:analysis');
-    };
-  }, []);
+  }, [exerciseType, onStatsUpdate, isActive]);
 
   // Attach stream to video
   useEffect(() => {
     if (!videoRef.current) return;
-    console.log('📹 Attaching stream to video element');
     videoRef.current.srcObject = stream;
     videoRef.current.play()
       .then(() => console.log('✅ Video playing'))
@@ -537,10 +489,8 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
   }, []);
 
   const initPose = useCallback(() => {
-    // Try accessing Pose from window (CDN loads it globally)
     const PoseClass = (window as any).Pose;
     if (!PoseClass) {
-      // Retry after short delay
       setTimeout(() => {
         const P2 = (window as any).Pose;
         if (P2) startPose(P2);
@@ -561,8 +511,8 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       modelComplexity: 1,
       smoothLandmarks: true,
       enableSegmentation: false,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6,
+      minDetectionConfidence: 0.5,  // Lowered for better tracking during movement
+      minTrackingConfidence: 0.5,
     });
 
     pose.onResults((results: any) => {
@@ -589,41 +539,42 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       if (mirroredLms.length && activeRef.current) {
         const analysis = analyzeExercise(exerciseType, mirroredLms, statsRef.current.phase as RepPhase);
 
-        // ── ALWAYS count reps locally with MediaPipe (instant feedback) ──
+        // ── Count reps locally with MediaPipe (instant feedback) ──
         statsRef.current.formScore = analysis.formScore;
         statsRef.current.phase     = analysis.phase;
 
         const now = Date.now();
-        if (analysis.repComplete && (now - lastRepTime.current > 600)) {
+        if (analysis.repComplete && (now - lastRepTime.current > 800)) {
           lastRepTime.current = now;
           statsRef.current.totalReps += 1;
-          // Use Gemini's form score if available, otherwise use local
-          const effectiveScore = isGeminiActive ? geminiScoreRef.current : analysis.formScore;
-          if (effectiveScore >= 0.85) {
+          if (analysis.formScore >= 0.85) {
             statsRef.current.validReps += 1;
             setRepFlash(true);
             setTimeout(() => setRepFlash(false), 400);
           }
         }
 
-        // Show local feedback when Gemini is not providing it
-        if (!isGeminiActive) {
-          setFormScore(analysis.formScore);
-          setFeedback(analysis.feedback);
-          
-          // Voice Coaching (Local Fallback)
-          const nowTime = Date.now();
-          if (activeRef.current && analysis.formScore < 0.85 && analysis.feedback !== 'Tracking...') {
-            if (analysis.feedback !== lastSpokenFeedback.current || (nowTime - lastSpokenTime.current > 5000)) {
-              lastSpokenFeedback.current = analysis.feedback;
-              lastSpokenTime.current = nowTime;
-              
-              if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(analysis.feedback);
-                utterance.rate = 1.1;
-                window.speechSynthesis.speak(utterance);
-              }
+        // Track recent form scores for Gemini verification
+        recentFormScores.current.push(analysis.formScore);
+        if (recentFormScores.current.length > 20) {
+          recentFormScores.current = recentFormScores.current.slice(-20);
+        }
+
+        // Update displayed form score & feedback
+        setFormScore(analysis.formScore);
+        setFeedback(analysis.feedback);
+        
+        // Voice Coaching: Speak feedback if form is poor
+        if (activeRef.current && analysis.formScore < 0.85 && analysis.feedback !== 'Tracking...') {
+          if (analysis.feedback !== lastSpokenFeedback.current || (now - lastSpokenTime.current > 5000)) {
+            lastSpokenFeedback.current = analysis.feedback;
+            lastSpokenTime.current = now;
+            
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+              const utterance = new SpeechSynthesisUtterance(analysis.feedback);
+              utterance.rate = 1.1;
+              window.speechSynthesis.speak(utterance);
             }
           }
         }
@@ -631,26 +582,34 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
         onStatsUpdate({
           totalReps: statsRef.current.totalReps,
           validReps: statsRef.current.validReps,
-          formAccuracy: isGeminiActive ? geminiScoreRef.current : analysis.formScore,
-          feedback: isGeminiActive ? feedback : analysis.feedback,
+          formAccuracy: analysis.formScore,
+          feedback: analysis.feedback,
           poseLandmarks: mirroredLms,
           isActive: true,
         });
 
-        // ─── Gemini Live Stream (Hybrid Mode) ───
-        // Only capture & send frame to Gemini every 400ms if active
-        if (activeRef.current && (now - lastGeminiUpdate.current > 400)) {
-          lastGeminiUpdate.current = now;
+        // ─── Send lightweight progress to server (every 3 seconds) ───
+        // No Gemini Live! Just a simple progress update for end-of-workout verification
+        if (now - lastProgressUpdate.current > 3000) {
+          lastProgressUpdate.current = now;
           const socket = getSocket();
-          if (socket?.connected && video) {
-            // Compress heavily for speed ~25kb per frame
-            const frameSrc = canvas.toDataURL('image/jpeg', 0.5);
-            const base64Data = frameSrc.replace(/^data:image\/jpeg;base64,/, '');
-            socket.emit('workout:frame', { frame: base64Data, exerciseType });
+          if (socket?.connected) {
+            const avgScore = recentFormScores.current.length > 0
+              ? recentFormScores.current.reduce((a, b) => a + b, 0) / recentFormScores.current.length
+              : 1.0;
+            const durationSeconds = Math.floor((now - (statsRef.current.startTime || now)) / 1000);
+            socket.emit('workout:progress', {
+              exerciseType,
+              totalReps: statsRef.current.totalReps,
+              validReps: statsRef.current.validReps,
+              avgFormScore: avgScore,
+              durationSeconds,
+              recentFormScores: recentFormScores.current.slice(-10),
+            });
           }
         }
 
-        drawSkeleton(ctx, mirroredLms, isGeminiActive ? geminiScoreRef.current : analysis.formScore, w, h);
+        drawSkeleton(ctx, mirroredLms, analysis.formScore, w, h);
       } else if (!activeRef.current && mirroredLms.length) {
         // Preview mode — just draw skeleton
         drawSkeleton(ctx, mirroredLms, 1.0, w, h);
@@ -679,7 +638,7 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
 
   return (
     <div className="relative w-full h-full" style={{ minHeight: 340 }}>
-      {/* Hidden source video (visible for debugging) */}
+      {/* Hidden source video */}
       <video
         ref={videoRef}
         autoPlay playsInline muted
@@ -712,11 +671,9 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       {loaded && (
         <>
           {/* LIVE badge */}
-          <div className={`absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 border rounded-lg ${
-            isGeminiActive ? 'bg-neon-cyan/20 border-neon-cyan/40 text-neon-cyan' : 'bg-neon-pink/20 border-neon-pink/40 text-neon-pink'
-          }`}>
-            {isGeminiActive ? <BrainCircuit className="w-3.5 h-3.5 animate-pulse" /> : <div className="w-1.5 h-1.5 rounded-full bg-neon-pink animate-pulse" />}
-            <span className="text-xs font-mono font-bold">{isGeminiActive ? 'GEMINI LIVE' : 'LIVE AI'}</span>
+          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 border rounded-lg bg-neon-green/20 border-neon-green/40 text-neon-green">
+            <div className="w-1.5 h-1.5 rounded-full bg-neon-green animate-pulse" />
+            <span className="text-xs font-mono font-bold">AI TRACKING</span>
           </div>
 
           {/* Form score badge */}
@@ -741,21 +698,21 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
             {feedback}
           </div>
 
-            {/* Reference Image Overlay */}
-            {['squat', 'pushup', 'lunge', 'jumping_jack', 'plank'].includes(exerciseType) && (
-              <div className="absolute right-3 bottom-14 w-24 sm:w-32 rounded-xl overflow-hidden glass border border-space-500/30 shadow-2xl opacity-80 hover:opacity-100 transition-opacity">
-                <div className="bg-space-800/80 px-2 py-1 flex items-center justify-between border-b border-space-500/30">
-                  <span className="text-[9px] sm:text-[10px] font-display font-semibold text-white uppercase tracking-wider">Correct Form</span>
-                  <Eye className="w-3 h-3 text-neon-cyan" />
-                </div>
-                <img 
-                  src={`/exercises/${exerciseType}.png`} 
-                  alt={`${exerciseType} reference`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                />
+          {/* Reference Image Overlay */}
+          {['squat', 'pushup', 'lunge', 'jumping_jack', 'plank'].includes(exerciseType) && (
+            <div className="absolute right-3 bottom-14 w-24 sm:w-32 rounded-xl overflow-hidden glass border border-space-500/30 shadow-2xl opacity-80 hover:opacity-100 transition-opacity">
+              <div className="bg-space-800/80 px-2 py-1 flex items-center justify-between border-b border-space-500/30">
+                <span className="text-[9px] sm:text-[10px] font-display font-semibold text-white uppercase tracking-wider">Correct Form</span>
+                <Eye className="w-3 h-3 text-neon-cyan" />
               </div>
-            )}
+              <img 
+                src={`/exercises/${exerciseType}.png`} 
+                alt={`${exerciseType} reference`}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+              />
+            </div>
+          )}
             
           {/* Rep counter — shown when active */}
           {isActive && (
@@ -768,13 +725,6 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
                 <p className="text-xs text-neon-green font-mono">Valid</p>
                 <p className="text-lg font-display font-black text-neon-green">{statsRef.current.validReps}</p>
               </div>
-              {/* Gemini's count shown as secondary reference */}
-              {isGeminiActive && geminiRepCount.total > 0 && (
-                <div className="glass-sm px-2.5 py-1.5 rounded-lg text-center border border-neon-cyan/30">
-                  <p className="text-[10px] text-neon-cyan font-mono">AI Verified</p>
-                  <p className="text-sm font-display font-bold text-neon-cyan">{geminiRepCount.valid}/{geminiRepCount.total}</p>
-                </div>
-              )}
             </div>
           )}
         </>
