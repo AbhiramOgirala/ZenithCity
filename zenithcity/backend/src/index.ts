@@ -35,10 +35,10 @@ const socketOrigins = process.env.NODE_ENV === 'production'
       /\.netlify\.app$/
     ]
   : [
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      /^http:\/\/192\.168\.\d+\.\d+:5173$/,
-      /^http:\/\/10\.\d+\.\d+\.\d+:5173$/
+      /^http:\/\/localhost:517\d$/,
+      /^http:\/\/127\.0\.0\.1:517\d$/,
+      /^http:\/\/192\.168\.\d+\.\d+:517\d$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:517\d$/
     ];
 
 const io = new SocketServer(httpServer, {
@@ -63,10 +63,10 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
       /\.netlify\.app$/
     ]
   : [
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      /^http:\/\/192\.168\.\d+\.\d+:5173$/,
-      /^http:\/\/10\.\d+\.\d+\.\d+:5173$/
+      /^http:\/\/localhost:517\d$/,
+      /^http:\/\/127\.0\.0\.1:517\d$/,
+      /^http:\/\/192\.168\.\d+\.\d+:517\d$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:517\d$/
     ];
 
 app.use(cors({ 

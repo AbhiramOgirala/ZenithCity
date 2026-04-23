@@ -88,15 +88,25 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
       .eq('id', userId)
       .single();
 
+    // Calculate city health as average of building healths
+    const city = cityData.data;
+    if (city && city.buildings && city.buildings.length > 0) {
+      const totalHealth = city.buildings.reduce((sum: number, b: any) => sum + (b.health || 0), 0);
+      city.health = Math.round(totalHealth / city.buildings.length);
+    } else if (city) {
+      city.health = 100; // Default if no buildings
+    }
+
     res.json({
       workouts_last_30_days: workoutCount.count || 0,
       weekly_points,
-      city_state: cityData.data,
+      city_state: city,
       leaderboard_rank: rank,
       points_balance: viewerPoints,
       points_to_next_rank: pointsToNextRank,
       upcoming_battles: battles.data || [],
       recent_workouts: recentWorkouts.data || [],
+      onboarding_completed: streakUser?.onboarding_completed ?? false,
     });
   } catch (err) {
     console.error('Dashboard error:', err);

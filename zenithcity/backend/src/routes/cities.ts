@@ -32,7 +32,16 @@ router.get('/my-city', authMiddleware, async (req: AuthRequest, res: Response): 
     const { data: buildings } = await supabase
       .from('buildings').select('*').eq('city_id', city.id).order('created_at');
 
-    res.json({ ...city, buildings: buildings || [] });
+    // Calculate city health as average of building healths
+    const buildingList = buildings || [];
+    if (buildingList.length > 0) {
+      const totalHealth = buildingList.reduce((sum: number, b: any) => sum + (b.health || 0), 0);
+      city.health = Math.round(totalHealth / buildingList.length);
+    } else {
+      city.health = 100; // Default if no buildings
+    }
+
+    res.json({ ...city, buildings: buildingList });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch city' });
   }
