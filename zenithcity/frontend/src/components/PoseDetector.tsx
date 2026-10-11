@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 import { CheckCircle, AlertCircle, Eye } from 'lucide-react';
 import { AIStats } from '../pages/WorkoutPage';
 import { getSocket } from '../services/socket';
@@ -22,14 +23,71 @@ interface Props {
   onStatsUpdate: (stats: AIStats) => void;
 }
 
+interface Landmark {
+  x: number;
+  y: number;
+  z?: number;
+  visibility?: number;
+  worldX?: number;
+  worldY?: number;
+  worldZ?: number;
+}
+
+const MIN_LANDMARK_VISIBILITY = 0.5;
+const PHASE_STABILITY_MS = 120;
+
+function smoothLandmarks(current: Landmark[], previous: Landmark[] | null): Landmark[] {
+  if (!previous || previous.length !== current.length) return current;
+
+  const smoothing = 0.45;
+  return current.map((landmark, index) => {
+    const previousLandmark = previous[index];
+    if (!previousLandmark || (landmark.visibility ?? 1) < MIN_LANDMARK_VISIBILITY) {
+      return landmark;
+    }
+
+    return {
+      ...landmark,
+      x: previousLandmark.x + (landmark.x - previousLandmark.x) * smoothing,
+      y: previousLandmark.y + (landmark.y - previousLandmark.y) * smoothing,
+      z: typeof landmark.z === 'number' && typeof previousLandmark.z === 'number'
+        ? previousLandmark.z + (landmark.z - previousLandmark.z) * smoothing
+        : landmark.z,
+      worldX: typeof landmark.worldX === 'number' && typeof previousLandmark.worldX === 'number'
+        ? previousLandmark.worldX + (landmark.worldX - previousLandmark.worldX) * smoothing
+        : landmark.worldX,
+      worldY: typeof landmark.worldY === 'number' && typeof previousLandmark.worldY === 'number'
+        ? previousLandmark.worldY + (landmark.worldY - previousLandmark.worldY) * smoothing
+        : landmark.worldY,
+      worldZ: typeof landmark.worldZ === 'number' && typeof previousLandmark.worldZ === 'number'
+        ? previousLandmark.worldZ + (landmark.worldZ - previousLandmark.worldZ) * smoothing
+        : landmark.worldZ,
+    };
+  });
+}
+
+function reliableLandmarks(landmarks: Landmark[]): Landmark[] {
+  return landmarks.map(landmark => (
+    landmark && (landmark.visibility ?? 1) >= MIN_LANDMARK_VISIBILITY ? landmark : null
+  )) as Landmark[];
+}
+
 // ─── Joint angle helpers ────────────────────────────────────────────────────
 
-function getAngle(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }): number {
-  const ab = { x: a.x - b.x, y: a.y - b.y };
-  const cb = { x: c.x - b.x, y: c.y - b.y };
-  const dot = ab.x * cb.x + ab.y * cb.y;
-  const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2);
-  const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2);
+function getAngle(a: Landmark, b: Landmark, c: Landmark): number {
+  const ab = {
+    x: getCoordinate(a, 'x') - getCoordinate(b, 'x'),
+    y: getCoordinate(a, 'y') - getCoordinate(b, 'y'),
+    z: getCoordinate(a, 'z') - getCoordinate(b, 'z'),
+  };
+  const cb = {
+    x: getCoordinate(c, 'x') - getCoordinate(b, 'x'),
+    y: getCoordinate(c, 'y') - getCoordinate(b, 'y'),
+    z: getCoordinate(c, 'z') - getCoordinate(b, 'z'),
+  };
+  const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
+  const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2 + ab.z ** 2);
+  const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2 + cb.z ** 2);
   if (magAB === 0 || magCB === 0) return 0;
   const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
   return (Math.acos(cosAngle) * 180) / Math.PI;
@@ -38,30 +96,74 @@ function getAngle(a: { x: number; y: number }, b: { x: number; y: number }, c: {
 // MediaPipe landmark indices
 const LM = {
   LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
-  LEFT_ELBOW: 13,    RIGHT_ELBOW: 14,
-  LEFT_WRIST: 15,    RIGHT_WRIST: 16,
-  LEFT_HIP: 23,      RIGHT_HIP: 24,
-  LEFT_KNEE: 25,     RIGHT_KNEE: 26,
-  LEFT_ANKLE: 27,    RIGHT_ANKLE: 28,
+  LEFT_ELBOW: 13, RIGHT_ELBOW: 14,
+  LEFT_WRIST: 15, RIGHT_WRIST: 16,
+  LEFT_HIP: 23, RIGHT_HIP: 24,
+  LEFT_KNEE: 25, RIGHT_KNEE: 26,
+  LEFT_ANKLE: 27, RIGHT_ANKLE: 28,
   NOSE: 0,
 };
 
 // ─── Exercise analyzers ──────────────────────────────────────────────────────
 
-type RepPhase = 'up' | 'down' | 'hold';
-interface AnalysisResult {
+type RepPhase = 'up' | 'down' | 'hold' | 'transition';
+interface BaseAnalysisResult {
   repComplete: boolean;
   formScore: number;   // 0–1
   feedback: string;
   phase: RepPhase;
 }
 
-function analyzeSquat(lms: any[], prevPhase: RepPhase): AnalysisResult {
-  const lHip   = lms[LM.LEFT_HIP];
-  const lKnee  = lms[LM.LEFT_KNEE];
+interface AnalysisResult extends BaseAnalysisResult {
+  confidence: number;
+  repCompleted: boolean;
+}
+
+interface CalibrationProfile {
+  squatUpAngle: number;
+  squatDownAngle: number;
+  pushupUpAngle: number;
+  pushupDownAngle: number;
+  lungeUpAngle: number;
+  lungeDownAngle: number;
+}
+
+const DEFAULT_CALIBRATION: CalibrationProfile = {
+  squatUpAngle: 160,
+  squatDownAngle: 130,
+  pushupUpAngle: 155,
+  pushupDownAngle: 110,
+  lungeUpAngle: 160,
+  lungeDownAngle: 120,
+};
+
+function getCoordinate(landmark: Landmark, axis: 'x' | 'y' | 'z'): number {
+  if (axis === 'x' && typeof landmark.worldX === 'number') return landmark.worldX;
+  if (axis === 'y' && typeof landmark.worldY === 'number') return landmark.worldY;
+  if (axis === 'z' && typeof landmark.worldZ === 'number') return landmark.worldZ;
+  return landmark[axis] ?? 0;
+}
+
+function getConfidence(lms: Landmark[], indexes: number[]): number {
+  if (indexes.length === 0) return 1;
+  const visible = indexes.reduce((sum, index) => sum + (lms[index]?.visibility ?? 0), 0);
+  return Math.max(0, Math.min(1, visible / indexes.length));
+}
+
+function withConfidence(result: BaseAnalysisResult, lms: Landmark[], indexes: number[]): AnalysisResult {
+  return {
+    ...result,
+    confidence: getConfidence(lms, indexes),
+    repCompleted: result.repComplete,
+  };
+}
+
+function SquatAnalyzer(lms: Landmark[], prevPhase: RepPhase, calibration: CalibrationProfile): BaseAnalysisResult {
+  const lHip = lms[LM.LEFT_HIP];
+  const lKnee = lms[LM.LEFT_KNEE];
   const lAnkle = lms[LM.LEFT_ANKLE];
-  const rHip   = lms[LM.RIGHT_HIP];
-  const rKnee  = lms[LM.RIGHT_KNEE];
+  const rHip = lms[LM.RIGHT_HIP];
+  const rKnee = lms[LM.RIGHT_KNEE];
   const rAnkle = lms[LM.RIGHT_ANKLE];
   const lShoulder = lms[LM.LEFT_SHOULDER];
   const rShoulder = lms[LM.RIGHT_SHOULDER];
@@ -70,17 +172,17 @@ function analyzeSquat(lms: any[], prevPhase: RepPhase): AnalysisResult {
     return { repComplete: false, formScore: 0, feedback: 'Step into frame — full body needed', phase: prevPhase };
   }
 
-  const leftKneeAngle  = getAngle(lHip,  lKnee,  lAnkle);
-  const rightKneeAngle = getAngle(rHip,  rKnee,  rAnkle);
-  const avgKneeAngle   = (leftKneeAngle + rightKneeAngle) / 2;
+  const leftKneeAngle = getAngle(lHip, lKnee, lAnkle);
+  const rightKneeAngle = getAngle(rHip, rKnee, rAnkle);
+  const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
 
   // Check knee alignment (shouldn't cave inward)
   const kneeWidth = Math.abs(lKnee.x - rKnee.x);
-  const hipWidth  = Math.abs(lHip.x  - rHip.x);
+  const hipWidth = Math.abs(lHip.x - rHip.x);
   const kneesCaved = kneeWidth < hipWidth * 0.6;
 
   // Check if person is actually standing (not sitting/lying)
-  const isStanding = lShoulder && rShoulder && 
+  const isStanding = lShoulder && rShoulder &&
     (lShoulder.y < lHip.y - 0.08) && (rShoulder.y < rHip.y - 0.08);
 
   if (!isStanding) {
@@ -88,15 +190,15 @@ function analyzeSquat(lms: any[], prevPhase: RepPhase): AnalysisResult {
   }
 
   let formScore = 1.0;
-  let feedback  = '';
+  let feedback = '';
 
   // Phase detection - RELAXED thresholds for real-world movement
-  const isDown = avgKneeAngle < 130;   // Relaxed: 130° instead of 100° (catches partial squats too)
+  const isDown = avgKneeAngle < calibration.squatDownAngle;
   const isDeep = avgKneeAngle < 100;   // Bonus: deep squat
-  const isUp   = avgKneeAngle > 160;   // Standing position
-  
+  const isUp = avgKneeAngle > calibration.squatUpAngle;
+
   let newPhase: RepPhase = prevPhase;
-  
+
   if (isDown) {
     newPhase = 'down';
   } else if (isUp) {
@@ -131,19 +233,19 @@ function analyzeSquat(lms: any[], prevPhase: RepPhase): AnalysisResult {
 
   // Rep completed: went from down phase to standing up
   const repComplete = prevPhase === 'down' && isUp;
-  
+
   return { repComplete, formScore: Math.max(0, formScore), feedback, phase: newPhase };
 }
 
-function analyzePushup(lms: any[], prevPhase: RepPhase): AnalysisResult {
+function PushupAnalyzer(lms: Landmark[], prevPhase: RepPhase, calibration: CalibrationProfile): BaseAnalysisResult {
   const lShoulder = lms[LM.LEFT_SHOULDER];
-  const lElbow    = lms[LM.LEFT_ELBOW];
-  const lWrist    = lms[LM.LEFT_WRIST];
+  const lElbow = lms[LM.LEFT_ELBOW];
+  const lWrist = lms[LM.LEFT_WRIST];
   const rShoulder = lms[LM.RIGHT_SHOULDER];
-  const rElbow    = lms[LM.RIGHT_ELBOW];
-  const rWrist    = lms[LM.RIGHT_WRIST];
-  const lHip      = lms[LM.LEFT_HIP];
-  const rHip      = lms[LM.RIGHT_HIP];
+  const rElbow = lms[LM.RIGHT_ELBOW];
+  const rWrist = lms[LM.RIGHT_WRIST];
+  const lHip = lms[LM.LEFT_HIP];
+  const rHip = lms[LM.RIGHT_HIP];
 
   if (!lShoulder || !lElbow || !lWrist || !lHip) {
     return { repComplete: false, formScore: 0, feedback: 'Lie down — camera should see your side profile', phase: prevPhase };
@@ -151,27 +253,27 @@ function analyzePushup(lms: any[], prevPhase: RepPhase): AnalysisResult {
 
   // Check if person is in plank/pushup position (horizontal body)
   const isHorizontal = lShoulder && lHip && Math.abs(lShoulder.y - lHip.y) < 0.2;
-  
+
   if (!isHorizontal) {
     return { repComplete: false, formScore: 0.5, feedback: 'Get into pushup position (plank)', phase: prevPhase };
   }
 
-  const leftElbowAngle  = getAngle(lShoulder, lElbow, lWrist);
+  const leftElbowAngle = getAngle(lShoulder, lElbow, lWrist);
   const rightElbowAngle = rShoulder && rElbow && rWrist ? getAngle(rShoulder, rElbow, rWrist) : leftElbowAngle;
-  const avgElbow        = (leftElbowAngle + rightElbowAngle) / 2;
+  const avgElbow = (leftElbowAngle + rightElbowAngle) / 2;
 
   // Body alignment (hip sag)
   const hipSag = lHip && lShoulder ? (lHip.y - lShoulder.y) > 0.15 : false;
 
   let formScore = 1.0;
-  let feedback  = '';
+  let feedback = '';
 
   // RELAXED phase detection
-  const isDown = avgElbow < 110;   // Relaxed from 90
-  const isUp   = avgElbow > 155;   // Relaxed from 160
-  
+  const isDown = avgElbow < calibration.pushupDownAngle;
+  const isUp = avgElbow > calibration.pushupUpAngle;
+
   let newPhase: RepPhase = prevPhase;
-  
+
   if (isDown) {
     newPhase = 'down';
   } else if (isUp) {
@@ -198,16 +300,16 @@ function analyzePushup(lms: any[], prevPhase: RepPhase): AnalysisResult {
   }
 
   const repComplete = prevPhase === 'down' && isUp;
-  
+
   return { repComplete, formScore: Math.max(0, formScore), feedback, phase: newPhase };
 }
 
-function analyzeLunge(lms: any[], prevPhase: RepPhase): AnalysisResult {
-  const lHip   = lms[LM.LEFT_HIP];
-  const lKnee  = lms[LM.LEFT_KNEE];
+function LungeAnalyzer(lms: Landmark[], prevPhase: RepPhase, calibration: CalibrationProfile): BaseAnalysisResult {
+  const lHip = lms[LM.LEFT_HIP];
+  const lKnee = lms[LM.LEFT_KNEE];
   const lAnkle = lms[LM.LEFT_ANKLE];
-  const rHip   = lms[LM.RIGHT_HIP];
-  const rKnee  = lms[LM.RIGHT_KNEE];
+  const rHip = lms[LM.RIGHT_HIP];
+  const rKnee = lms[LM.RIGHT_KNEE];
   const lShoulder = lms[LM.LEFT_SHOULDER];
 
   if (!lHip || !lKnee || !lAnkle || !rHip || !rKnee) {
@@ -215,24 +317,24 @@ function analyzeLunge(lms: any[], prevPhase: RepPhase): AnalysisResult {
   }
 
   const isStanding = lShoulder && lHip && (lShoulder.y < lHip.y - 0.05);
-  
+
   if (!isStanding) {
     return { repComplete: false, formScore: 0.5, feedback: 'Stand up to perform lunges', phase: prevPhase };
   }
 
-  const leftKneeAngle  = getAngle(lHip, lKnee, lAnkle);
+  const leftKneeAngle = getAngle(lHip, lKnee, lAnkle);
   const rightKneeAngle = getAngle(rHip, rKnee, lms[LM.RIGHT_ANKLE] || lAnkle);
   const kneeAngle = Math.min(leftKneeAngle, rightKneeAngle);
 
   let formScore = 1.0;
-  let feedback  = '';
+  let feedback = '';
 
   // RELAXED phase detection
-  const isDown = kneeAngle < 120;  // Relaxed from 100
-  const isUp   = kneeAngle > 160;  // Relaxed from 165
-  
+  const isDown = kneeAngle < calibration.lungeDownAngle;
+  const isUp = kneeAngle > calibration.lungeUpAngle;
+
   let newPhase: RepPhase = prevPhase;
-  
+
   if (isDown) {
     newPhase = 'down';
   } else if (isUp) {
@@ -257,17 +359,17 @@ function analyzeLunge(lms: any[], prevPhase: RepPhase): AnalysisResult {
   }
 
   const repComplete = prevPhase === 'down' && isUp;
-  
+
   return { repComplete, formScore: Math.max(0, formScore), feedback, phase: newPhase };
 }
 
-function analyzeJumpingJack(lms: any[], prevPhase: RepPhase): AnalysisResult {
+function JumpingJackAnalyzer(lms: Landmark[], prevPhase: RepPhase): BaseAnalysisResult {
   const lShoulder = lms[LM.LEFT_SHOULDER];
   const rShoulder = lms[LM.RIGHT_SHOULDER];
-  const lWrist    = lms[LM.LEFT_WRIST];
-  const rWrist    = lms[LM.RIGHT_WRIST];
-  const lAnkle    = lms[LM.LEFT_ANKLE];
-  const rAnkle    = lms[LM.RIGHT_ANKLE];
+  const lWrist = lms[LM.LEFT_WRIST];
+  const rWrist = lms[LM.RIGHT_WRIST];
+  const lAnkle = lms[LM.LEFT_ANKLE];
+  const rAnkle = lms[LM.RIGHT_ANKLE];
 
   if (!lShoulder || !rShoulder || !lAnkle || !rAnkle || !lWrist || !rWrist) {
     return { repComplete: false, formScore: 0, feedback: 'Step back — need full body visible', phase: prevPhase };
@@ -275,11 +377,11 @@ function analyzeJumpingJack(lms: any[], prevPhase: RepPhase): AnalysisResult {
 
   // Arms above shoulders
   const armsUp = lWrist.y < lShoulder.y - 0.1 && rWrist.y < rShoulder.y - 0.1;
-  
+
   // Legs wider than shoulders
   const shoulderWidth = Math.abs(lShoulder.x - rShoulder.x);
-  const legWidth      = Math.abs(lAnkle.x - rAnkle.x);
-  const legsWide      = legWidth > shoulderWidth * 1.5;  // Relaxed from 2.0
+  const legWidth = Math.abs(lAnkle.x - rAnkle.x);
+  const legsWide = legWidth > shoulderWidth * 1.5;  // Relaxed from 2.0
 
   // Arms down
   const armsDown = lWrist.y > lShoulder.y && rWrist.y > rShoulder.y;
@@ -289,13 +391,13 @@ function analyzeJumpingJack(lms: any[], prevPhase: RepPhase): AnalysisResult {
 
   // OPEN position: arms up, legs wide
   const isOpen = armsUp && legsWide;
-  
+
   // CLOSED position: arms down, legs together
   const isClosed = armsDown && legsClosed;
 
   const newPhase: RepPhase = isOpen ? 'up' : isClosed ? 'down' : prevPhase;
 
-  let feedback  = '';
+  let feedback = '';
   let formScore = 0.88; // Default transition score
 
   if (isOpen) {
@@ -322,26 +424,26 @@ function analyzeJumpingJack(lms: any[], prevPhase: RepPhase): AnalysisResult {
   }
 
   const repComplete = prevPhase === 'up' && isClosed;
-  
+
   return { repComplete, formScore, feedback, phase: newPhase };
 }
 
-function analyzePlank(lms: any[]): AnalysisResult {
+function PlankAnalyzer(lms: Landmark[]): BaseAnalysisResult {
   const lShoulder = lms[LM.LEFT_SHOULDER];
-  const lHip      = lms[LM.LEFT_HIP];
-  const lAnkle    = lms[LM.LEFT_ANKLE];
+  const lHip = lms[LM.LEFT_HIP];
+  const lAnkle = lms[LM.LEFT_ANKLE];
 
   if (!lShoulder || !lHip || !lAnkle) {
     return { repComplete: false, formScore: 0, feedback: 'Lie flat — camera should see your side', phase: 'hold' };
   }
 
-  const hipSag   = lHip.y > Math.max(lShoulder.y, lAnkle.y) + 0.06;
-  const hipHigh  = lHip.y < Math.min(lShoulder.y, lAnkle.y) - 0.06;
+  const hipSag = lHip.y > Math.max(lShoulder.y, lAnkle.y) + 0.06;
+  const hipHigh = lHip.y < Math.min(lShoulder.y, lAnkle.y) - 0.06;
 
   let formScore = 1.0;
-  let feedback  = '✓ Great plank — hold steady!';
+  let feedback = '✓ Great plank — hold steady!';
 
-  if (hipSag)  { formScore = 0.5; feedback = 'Hips dropping — tighten your core!'; }
+  if (hipSag) { formScore = 0.5; feedback = 'Hips dropping — tighten your core!'; }
   if (hipHigh) { formScore = 0.6; feedback = 'Lower your hips — straight line!'; }
 
   return { repComplete: false, formScore, feedback, phase: 'hold' };
@@ -349,40 +451,68 @@ function analyzePlank(lms: any[]): AnalysisResult {
 
 // ─── Exercise dispatcher ─────────────────────────────────────────────────────
 
-function analyzeExercise(exerciseType: string, lms: any[], prevPhase: RepPhase): AnalysisResult {
+function analyzeExercise(
+  exerciseType: string,
+  lms: Landmark[],
+  prevPhase: RepPhase,
+  calibration: CalibrationProfile,
+): AnalysisResult {
+  let result: BaseAnalysisResult;
+  let requiredLandmarks: number[];
+
   switch (exerciseType) {
-    case 'squat':        return analyzeSquat(lms, prevPhase);
-    case 'pushup':       return analyzePushup(lms, prevPhase);
-    case 'lunge':        return analyzeLunge(lms, prevPhase);
-    case 'jumping_jack': return analyzeJumpingJack(lms, prevPhase);
-    case 'plank':        return analyzePlank(lms);
+    case 'squat':
+      result = SquatAnalyzer(lms, prevPhase, calibration);
+      requiredLandmarks = [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE];
+      break;
+    case 'pushup':
+      result = PushupAnalyzer(lms, prevPhase, calibration);
+      requiredLandmarks = [LM.LEFT_SHOULDER, LM.LEFT_ELBOW, LM.LEFT_WRIST, LM.LEFT_HIP];
+      break;
+    case 'lunge':
+      result = LungeAnalyzer(lms, prevPhase, calibration);
+      requiredLandmarks = [LM.LEFT_HIP, LM.LEFT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_HIP, LM.RIGHT_KNEE];
+      break;
+    case 'jumping_jack':
+      result = JumpingJackAnalyzer(lms, prevPhase);
+      requiredLandmarks = [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_WRIST, LM.RIGHT_WRIST, LM.LEFT_ANKLE, LM.RIGHT_ANKLE];
+      break;
+    case 'plank':
+      result = PlankAnalyzer(lms);
+      requiredLandmarks = [LM.LEFT_SHOULDER, LM.LEFT_HIP, LM.LEFT_ANKLE];
+      break;
     case 'cardio':
-      return { repComplete: false, formScore: 1.0, feedback: 'Keep moving — cardio in progress!', phase: 'hold' };
+      result = { repComplete: false, formScore: 1.0, feedback: 'Keep moving — cardio in progress!', phase: 'hold' };
+      requiredLandmarks = [];
+      break;
     default:
-      return { repComplete: false, formScore: 1.0, feedback: 'Tracking...', phase: 'hold' };
+      result = { repComplete: false, formScore: 1.0, feedback: 'Tracking...', phase: 'hold' };
+      requiredLandmarks = [];
   }
+
+  return withConfidence(result, lms, requiredLandmarks);
 }
 
 // ─── Skeleton overlay painter ─────────────────────────────────────────────────
 
 const POSE_CONNECTIONS = [
-  [11,12],[11,13],[13,15],[12,14],[14,16],
-  [11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28],
+  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+  [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28],
 ];
 
 function drawSkeleton(ctx: CanvasRenderingContext2D, lms: any[], formScore: number, w: number, h: number) {
   if (!lms.length) return;
 
-  const good  = formScore >= 0.85;
+  const good = formScore >= 0.85;
   const color = good ? '#00FF88' : '#FF2E97';
-  const glow  = good ? 'rgba(0,255,136,0.5)' : 'rgba(255,46,151,0.5)';
+  const glow = good ? 'rgba(0,255,136,0.5)' : 'rgba(255,46,151,0.5)';
 
   ctx.shadowBlur = 12;
   ctx.shadowColor = glow;
 
   // Draw bones
   ctx.strokeStyle = color;
-  ctx.lineWidth   = 3;
+  ctx.lineWidth = 3;
   POSE_CONNECTIONS.forEach(([a, b]) => {
     const pa = lms[a], pb = lms[b];
     if (!pa || !pb || pa.visibility < 0.5 || pb.visibility < 0.5) return;
@@ -401,45 +531,106 @@ function drawSkeleton(ctx: CanvasRenderingContext2D, lms: any[], formScore: numb
     ctx.fillStyle = color;
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth   = 1.5;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
   });
 
   ctx.shadowBlur = 0;
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-
-declare global {
-  interface Window {
-    Pose: any;
-  }
+interface CalibrationState {
+  profile: CalibrationProfile;
+  squatSamples: number[];
+  pushupSamples: number[];
+  lungeSamples: number[];
+  complete: boolean;
 }
 
+function average(values: number[]): number | null {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function updateCalibration(state: CalibrationState, lms: Landmark[]): void {
+  if (state.complete) return;
+
+  const leftHip = lms[LM.LEFT_HIP];
+  const rightHip = lms[LM.RIGHT_HIP];
+  const leftKnee = lms[LM.LEFT_KNEE];
+  const rightKnee = lms[LM.RIGHT_KNEE];
+  const leftAnkle = lms[LM.LEFT_ANKLE];
+  const rightAnkle = lms[LM.RIGHT_ANKLE];
+
+  if (leftHip && rightHip && leftKnee && rightKnee && leftAnkle && rightAnkle) {
+    const kneeAngle = (
+      getAngle(leftHip, leftKnee, leftAnkle) + getAngle(rightHip, rightKnee, rightAnkle)
+    ) / 2;
+    if (kneeAngle > 145 && state.squatSamples.length < 30) state.squatSamples.push(kneeAngle);
+    if (kneeAngle > 145 && state.lungeSamples.length < 30) state.lungeSamples.push(kneeAngle);
+  }
+
+  const leftShoulder = lms[LM.LEFT_SHOULDER];
+  const leftElbow = lms[LM.LEFT_ELBOW];
+  const leftWrist = lms[LM.LEFT_WRIST];
+  if (leftShoulder && leftElbow && leftWrist && leftHip && Math.abs(leftShoulder.y - leftHip.y) < 0.2) {
+    const elbowAngle = getAngle(leftShoulder, leftElbow, leftWrist);
+    if (elbowAngle > 140 && state.pushupSamples.length < 30) state.pushupSamples.push(elbowAngle);
+  }
+
+  if (state.squatSamples.length < 10 || state.lungeSamples.length < 10 || state.pushupSamples.length < 10) return;
+
+  const squatUp = average(state.squatSamples);
+  const pushupUp = average(state.pushupSamples);
+  const lungeUp = average(state.lungeSamples);
+  if (squatUp === null || pushupUp === null || lungeUp === null) return;
+
+  state.profile = {
+    squatUpAngle: Math.max(150, Math.min(175, squatUp - 2)),
+    squatDownAngle: Math.max(110, Math.min(140, squatUp - 32)),
+    pushupUpAngle: Math.max(145, Math.min(175, pushupUp - 2)),
+    pushupDownAngle: Math.max(90, Math.min(120, pushupUp - 45)),
+    lungeUpAngle: Math.max(150, Math.min(175, lungeUp - 2)),
+    lungeDownAngle: Math.max(105, Math.min(130, lungeUp - 38)),
+  };
+  state.complete = true;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function PoseDetector({ stream, exerciseType, isActive, onStatsUpdate }: Props) {
-  const videoRef  = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const poseRef   = useRef<any>(null);
-  const statsRef  = useRef({ totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase, startTime: 0 });
+  const poseRef = useRef<any>(null);
+  const statsRef = useRef({ totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase, startTime: 0 });
   const activeRef = useRef(isActive);
   const lastRepTime = useRef(0);
   const lastSpokenFeedback = useRef('');
   const lastSpokenTime = useRef(0);
   const lastProgressUpdate = useRef(0);
   const recentFormScores = useRef<number[]>([]);
+  const previousLandmarks = useRef<Landmark[] | null>(null);
+  const phaseCandidate = useRef<RepPhase>('up');
+  const phaseCandidateSince = useRef(0);
+  const downStartedAt = useRef(0);
+  const calibration = useRef<CalibrationState>({
+    profile: DEFAULT_CALIBRATION,
+    squatSamples: [],
+    pushupSamples: [],
+    lungeSamples: [],
+    complete: false,
+  });
   const exerciseRef = useRef(exerciseType);
-  const [feedback, setFeedback]       = useState('Position yourself in frame');
-  const [formScore, setFormScore]     = useState(1.0);
-  const [loaded, setLoaded]           = useState(false);
-  const [loadError, setLoadError]     = useState('');
-  const [repFlash, setRepFlash]       = useState(false);
+  const [feedback, setFeedback] = useState('Position yourself in frame');
+  const [formScore, setFormScore] = useState(1.0);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [repFlash, setRepFlash] = useState(false);
 
   // Keep activeRef in sync and initialize start time when it becomes active
-  useEffect(() => { 
+  useEffect(() => {
     if (isActive && !activeRef.current) {
       statsRef.current.startTime = Date.now();
     }
-    activeRef.current = isActive; 
+    activeRef.current = isActive;
   }, [isActive]);
 
   // Reset stats when exercise type changes
@@ -449,6 +640,17 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       statsRef.current = { totalReps: 0, validReps: 0, formScore: 1.0, phase: 'up' as RepPhase, startTime: isActive ? Date.now() : 0 };
       lastRepTime.current = 0;
       recentFormScores.current = [];
+      previousLandmarks.current = null;
+      phaseCandidate.current = 'up';
+      phaseCandidateSince.current = 0;
+      downStartedAt.current = 0;
+      calibration.current = {
+        profile: DEFAULT_CALIBRATION,
+        squatSamples: [],
+        pushupSamples: [],
+        lungeSamples: [],
+        complete: false,
+      };
       onStatsUpdate({
         totalReps: 0, validReps: 0, formAccuracy: 0,
         feedback: 'Position yourself in frame', poseLandmarks: [], isActive: false,
@@ -465,62 +667,65 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       .catch((err) => console.error('❌ Video play error:', err));
   }, [stream]);
 
-  // Load MediaPipe Pose from CDN
+  // Load the local MediaPipe Tasks Vision runtime and Pose Landmarker model.
   useEffect(() => {
-    const scriptId = 'mediapipe-pose';
-    if (document.getElementById(scriptId)) {
-      initPose();
-      return;
+    let cancelled = false;
+
+    async function loadPoseLandmarker() {
+      try {
+        const vision = await FilesetResolver.forVisionTasks('/models/wasm');
+        const landmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: '/models/pose_landmarker_lite.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+          minPoseDetectionConfidence: 0.5,
+          minPosePresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+          outputSegmentationMasks: false,
+        });
+
+        if (cancelled) {
+          landmarker.close();
+          return;
+        }
+        startPose(landmarker);
+      } catch (error) {
+        console.error('Pose Landmarker failed to load:', error);
+        setLoadError('MediaPipe pose model failed to load. Check the local model assets.');
+      }
     }
 
-    const script = document.createElement('script');
-    script.id  = scriptId;
-    script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js';
-    script.crossOrigin = 'anonymous';
-    script.onload  = () => initPose();
-    script.onerror = () => {
-      setLoadError('MediaPipe failed to load. Check internet connection.');
-    };
-    document.head.appendChild(script);
+    loadPoseLandmarker();
 
     return () => {
+      cancelled = true;
       poseRef.current?.close?.();
     };
   }, []);
 
-  const initPose = useCallback(() => {
-    const PoseClass = (window as any).Pose;
-    if (!PoseClass) {
-      setTimeout(() => {
-        const P2 = (window as any).Pose;
-        if (P2) startPose(P2);
-        else setLoadError('Pose class not found after load.');
-      }, 500);
-      return;
-    }
-    startPose(PoseClass);
-  }, []);
-
-  const startPose = useCallback((PoseClass: any) => {
-    const pose = new PoseClass({
-      locateFile: (file: string) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`,
-    });
-
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      enableSegmentation: false,
-      minDetectionConfidence: 0.5,  // Lowered for better tracking during movement
-      minTrackingConfidence: 0.5,
-    });
+  const startPose = useCallback((landmarker: PoseLandmarker) => {
+    let resultHandler: ((results: any) => void) | null = null;
+    const pose = {
+      onResults: (handler: (results: any) => void) => { resultHandler = handler; },
+      send: async ({ image }: { image: HTMLVideoElement }) => {
+        const result = landmarker.detectForVideo(image, performance.now());
+        resultHandler?.({
+          poseLandmarks: result.landmarks?.[0] || [],
+          poseWorldLandmarks: result.worldLandmarks?.[0] || [],
+        });
+      },
+      close: () => landmarker.close(),
+    };
 
     pose.onResults((results: any) => {
       const canvas = canvasRef.current;
-      const video  = videoRef.current;
+      const video = videoRef.current;
       if (!canvas || !video) return;
 
-      const w = canvas.width  = video.videoWidth  || 640;
+      const w = canvas.width = video.videoWidth || 640;
       const h = canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext('2d')!;
 
@@ -532,19 +737,46 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
       ctx.restore();
 
       const lms = results.poseLandmarks || [];
+      const worldLms = results.poseWorldLandmarks || [];
 
       // Mirror x coordinates for mirrored display
-      const mirroredLms = lms.map((lm: any) => ({ ...lm, x: 1 - lm.x }));
+      const mirroredLms = lms.map((lm: any, index: number) => ({
+        ...lm,
+        x: 1 - lm.x,
+        worldX: worldLms[index]?.x,
+        worldY: worldLms[index]?.y,
+        worldZ: worldLms[index]?.z,
+      }));
+      const smoothedLms = smoothLandmarks(mirroredLms, previousLandmarks.current);
+      previousLandmarks.current = smoothedLms;
+      const trackedLms = reliableLandmarks(smoothedLms);
 
-      if (mirroredLms.length && activeRef.current) {
-        const analysis = analyzeExercise(exerciseType, mirroredLms, statsRef.current.phase as RepPhase);
+      if (smoothedLms.length && activeRef.current) {
+        updateCalibration(calibration.current, trackedLms);
+        const analysis = analyzeExercise(
+          exerciseRef.current,
+          trackedLms,
+          statsRef.current.phase as RepPhase,
+          calibration.current.profile,
+        );
+        const now = Date.now();
+
+        // Require a phase to remain stable briefly so landmark jitter cannot create reps.
+        if (phaseCandidate.current !== analysis.phase) {
+          phaseCandidate.current = analysis.phase;
+          phaseCandidateSince.current = now;
+        }
+        const phaseStable = now - phaseCandidateSince.current >= PHASE_STABILITY_MS;
+        const stableAnalysis = {
+          ...analysis,
+          phase: phaseStable ? analysis.phase : statsRef.current.phase,
+        };
 
         // ── Count reps locally with MediaPipe (instant feedback) ──
-        statsRef.current.formScore = analysis.formScore;
-        statsRef.current.phase     = analysis.phase;
+        statsRef.current.formScore = stableAnalysis.formScore;
+        statsRef.current.phase = stableAnalysis.phase;
 
-        const now = Date.now();
-        if (analysis.repComplete && (now - lastRepTime.current > 800)) {
+        if (analysis.repComplete && analysis.confidence >= 0.65 && (now - lastRepTime.current > 800)) {
           lastRepTime.current = now;
           statsRef.current.totalReps += 1;
           if (analysis.formScore >= 0.85) {
@@ -561,18 +793,18 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
         }
 
         // Update displayed form score & feedback
-        setFormScore(analysis.formScore);
-        setFeedback(analysis.feedback);
-        
+        setFormScore(stableAnalysis.formScore);
+        setFeedback(stableAnalysis.feedback);
+
         // Voice Coaching: Speak feedback if form is poor
-        if (activeRef.current && analysis.formScore < 0.85 && analysis.feedback !== 'Tracking...') {
-          if (analysis.feedback !== lastSpokenFeedback.current || (now - lastSpokenTime.current > 5000)) {
-            lastSpokenFeedback.current = analysis.feedback;
+        if (activeRef.current && stableAnalysis.formScore < 0.85 && stableAnalysis.feedback !== 'Tracking...') {
+          if (stableAnalysis.feedback !== lastSpokenFeedback.current || (now - lastSpokenTime.current > 5000)) {
+            lastSpokenFeedback.current = stableAnalysis.feedback;
             lastSpokenTime.current = now;
-            
+
             if ('speechSynthesis' in window) {
               window.speechSynthesis.cancel();
-              const utterance = new SpeechSynthesisUtterance(analysis.feedback);
+              const utterance = new SpeechSynthesisUtterance(stableAnalysis.feedback);
               utterance.rate = 1.1;
               window.speechSynthesis.speak(utterance);
             }
@@ -582,9 +814,9 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
         onStatsUpdate({
           totalReps: statsRef.current.totalReps,
           validReps: statsRef.current.validReps,
-          formAccuracy: analysis.formScore,
-          feedback: analysis.feedback,
-          poseLandmarks: mirroredLms,
+          formAccuracy: stableAnalysis.formScore,
+          feedback: stableAnalysis.feedback,
+          poseLandmarks: smoothedLms,
           isActive: true,
         });
 
@@ -599,20 +831,21 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
               : 1.0;
             const durationSeconds = Math.floor((now - (statsRef.current.startTime || now)) / 1000);
             socket.emit('workout:progress', {
-              exerciseType,
+              exerciseType: exerciseRef.current,
               totalReps: statsRef.current.totalReps,
               validReps: statsRef.current.validReps,
               avgFormScore: avgScore,
               durationSeconds,
               recentFormScores: recentFormScores.current.slice(-10),
+              confidence: analysis.confidence,
             });
           }
         }
 
-        drawSkeleton(ctx, mirroredLms, analysis.formScore, w, h);
-      } else if (!activeRef.current && mirroredLms.length) {
+        drawSkeleton(ctx, smoothedLms, stableAnalysis.formScore, w, h);
+      } else if (!activeRef.current && smoothedLms.length) {
         // Preview mode — just draw skeleton
-        drawSkeleton(ctx, mirroredLms, 1.0, w, h);
+        drawSkeleton(ctx, smoothedLms, 1.0, w, h);
         setFeedback('Ready — start workout to count reps');
       }
     });
@@ -630,7 +863,7 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
     }
     try {
       await pose.send({ image: video });
-    } catch {}
+    } catch { }
     requestAnimationFrame(() => runLoop(pose));
   }, []);
 
@@ -677,11 +910,10 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
           </div>
 
           {/* Form score badge */}
-          <div className={`absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold transition-colors ${
-            good
-              ? 'bg-neon-green/20 border-neon-green/40 text-neon-green'
-              : 'bg-neon-pink/20 border-neon-pink/40 text-neon-pink'
-          }`}>
+          <div className={`absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold transition-colors ${good
+            ? 'bg-neon-green/20 border-neon-green/40 text-neon-green'
+            : 'bg-neon-pink/20 border-neon-pink/40 text-neon-pink'
+            }`}>
             {good ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
             {Math.round(formScore * 100)}%
           </div>
@@ -692,9 +924,8 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
           )}
 
           {/* Feedback banner */}
-          <div className={`absolute bottom-3 left-3 right-3 px-3 py-2 rounded-xl text-xs font-semibold text-center transition-colors ${
-            good ? 'bg-neon-green/20 text-neon-green border border-neon-green/30' : 'bg-neon-pink/20 text-neon-pink border border-neon-pink/30'
-          }`}>
+          <div className={`absolute bottom-3 left-3 right-3 px-3 py-2 rounded-xl text-xs font-semibold text-center transition-colors ${good ? 'bg-neon-green/20 text-neon-green border border-neon-green/30' : 'bg-neon-pink/20 text-neon-pink border border-neon-pink/30'
+            }`}>
             {feedback}
           </div>
 
@@ -705,15 +936,15 @@ export default function PoseDetector({ stream, exerciseType, isActive, onStatsUp
                 <span className="text-[9px] sm:text-[10px] font-display font-semibold text-white uppercase tracking-wider">Correct Form</span>
                 <Eye className="w-3 h-3 text-neon-cyan" />
               </div>
-              <img 
-                src={`/exercises/${exerciseType}.png`} 
+              <img
+                src={`/exercises/${exerciseType}.png`}
                 alt={`${exerciseType} reference`}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
               />
             </div>
           )}
-            
+
           {/* Rep counter — shown when active */}
           {isActive && (
             <div className="absolute left-3 bottom-14 flex flex-col gap-1">

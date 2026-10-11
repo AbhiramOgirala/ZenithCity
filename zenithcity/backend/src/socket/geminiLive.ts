@@ -12,7 +12,6 @@ import { GoogleGenAI } from '@google/genai';
  *   - Interference with local MediaPipe rep counting
  */
 
-<<<<<<< Updated upstream
 interface WorkoutSummary {
   exerciseType: string;
   totalReps: number;
@@ -20,25 +19,16 @@ interface WorkoutSummary {
   avgFormScore: number;
   durationSeconds: number;
   recentFormScores: number[];
-=======
-async function createLiveSession(ai: GoogleGenAI, userId: string, exerciseType: string, socket: Socket) {
-  const session = await ai.live.connect({
-    model: 'gemini-3.8-live', // Latest stable live model for real-time video analysis
-    config: {
-      responseModalities: [Modality.TEXT],
-      systemInstruction: {
-        parts: [{
-          text: `You are a strict fitness AI coach.
-The user is performing: ${exerciseType}.
-Analyze the stream of images to evaluate form.
-For every image frame you receive, respond strictly with JSON:
-{
-  "rep_completed_this_frame": boolean, // true ONLY on the exact frame a full rep finishes
-  "current_phase": "up"|"down"|"transition",
-  "form_score": 0.0-1.0,    // quality of current form
-  "feedback": "string",     // real-time coaching tip
-  "is_valid_form": boolean  // true if form is good enough to count
->>>>>>> Stashed changes
+}
+
+function clampScore(value: unknown, fallback: number): number {
+  const score = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.max(0, Math.min(1, score));
+}
+
+function clampCount(value: unknown, maximum: number, fallback: number): number {
+  const count = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : fallback;
+  return Math.max(0, Math.min(maximum, count));
 }
 
 const pendingSummaries = new Map<string, WorkoutSummary>();
@@ -121,13 +111,16 @@ Respond ONLY with this JSON (no markdown, no explanation):
         const text = response.text ?? '';
         const cleanJson = text.replace(/```json\n?|\n?```/g, '').trim();
         const verification = JSON.parse(cleanJson);
+        const verifiedTotal = clampCount(verification.verified_total_reps, summary.totalReps, summary.totalReps);
+        const verifiedValid = clampCount(verification.verified_valid_reps, verifiedTotal, summary.validReps);
+        const verifiedScore = clampScore(verification.verified_form_score, summary.avgFormScore);
 
-        console.log(`📊 Gemini verification for user ${userId}: ${verification.verified_valid_reps}/${verification.verified_total_reps} reps (legitimate: ${verification.is_legitimate})`);
+        console.log(`Gemini verification for user ${userId}: ${verifiedValid}/${verifiedTotal} reps (legitimate: ${Boolean(verification.is_legitimate)})`);
 
         socket.emit('workout:verification', {
-          gemini_total_reps: verification.verified_total_reps,
-          gemini_valid_reps: verification.verified_valid_reps,
-          gemini_avg_form_score: verification.verified_form_score,
+          gemini_total_reps: verifiedTotal,
+          gemini_valid_reps: verifiedValid,
+          gemini_avg_form_score: verifiedScore,
           gemini_frames_analyzed: summary.recentFormScores.length,
           gemini_was_active: true,
           gemini_feedback: verification.feedback || '',

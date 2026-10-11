@@ -10,6 +10,7 @@
     "pwa:test": "node test-pwa-standalone.js"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.17",
     "@react-three/drei": "^9.99.0",
     "@react-three/fiber": "^8.16.1",
     "@reduxjs/toolkit": "^2.1.0",
