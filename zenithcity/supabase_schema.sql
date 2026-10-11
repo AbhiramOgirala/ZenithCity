@@ -136,3 +136,67 @@ CREATE INDEX IF NOT EXISTS idx_points_transactions_user_id ON points_transaction
 CREATE INDEX IF NOT EXISTS idx_battle_participants_battle_id ON battle_participants(battle_id);
 CREATE INDEX IF NOT EXISTS idx_battle_participants_user_id ON battle_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_form_feedback_workout ON form_feedback_history(workout_session_id);
+
+-- Add columns used by workout plans, onboarding, and Strava sync.
+-- These statements are safe to run against an existing database.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS privacy_mode BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS battle_auto_enroll BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS consecutive_correct_sessions INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS technique_mastery_badge BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS points_balance INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS fitness_goal VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS age INTEGER,
+  ADD COLUMN IF NOT EXISTS height_cm FLOAT,
+  ADD COLUMN IF NOT EXISTS weight_kg FLOAT,
+  ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS health_issues TEXT,
+  ADD COLUMN IF NOT EXISTS target_weight_kg FLOAT,
+  ADD COLUMN IF NOT EXISTS time_period_weeks INTEGER,
+  ADD COLUMN IF NOT EXISTS time_per_day_minutes INTEGER,
+  ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS current_streak INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS best_streak INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_workout_date VARCHAR(10),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS fitness_level VARCHAR(20) DEFAULT 'beginner',
+  ADD COLUMN IF NOT EXISTS current_plan_json JSONB,
+  ADD COLUMN IF NOT EXISTS diet_preference VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS watch_access_token TEXT,
+  ADD COLUMN IF NOT EXISTS watch_refresh_token TEXT,
+  ADD COLUMN IF NOT EXISTS watch_connected BOOLEAN DEFAULT FALSE;
+
+-- Refresh PostgREST's schema cache after applying migrations.
+NOTIFY pgrst, 'reload schema';
+
+-- Atomically award externally synced activity points.
+CREATE OR REPLACE FUNCTION increment_points(user_id UUID, amount INTEGER)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_balance INTEGER;
+BEGIN
+  UPDATE users
+  SET points_balance = COALESCE(points_balance, 0) + amount,
+      updated_at = NOW()
+  WHERE users.id = $1
+  RETURNING points_balance INTO new_balance;
+
+  RETURN new_balance;
+END;
+$$;
+
+-- Restore each building in a city by 10 points, capped at 100.
+CREATE OR REPLACE FUNCTION restore_building_health(p_city_id UUID)
+RETURNS VOID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE buildings
+  SET health = LEAST(100, COALESCE(health, 0) + 10)
+  WHERE city_id = p_city_id;
+$$;

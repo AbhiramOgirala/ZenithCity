@@ -12,6 +12,7 @@ import { GoogleGenAI } from '@google/genai';
  *   - Interference with local MediaPipe rep counting
  */
 
+<<<<<<< Updated upstream
 interface WorkoutSummary {
   exerciseType: string;
   totalReps: number;
@@ -19,6 +20,25 @@ interface WorkoutSummary {
   avgFormScore: number;
   durationSeconds: number;
   recentFormScores: number[];
+=======
+async function createLiveSession(ai: GoogleGenAI, userId: string, exerciseType: string, socket: Socket) {
+  const session = await ai.live.connect({
+    model: 'gemini-3.8-live', // Latest stable live model for real-time video analysis
+    config: {
+      responseModalities: [Modality.TEXT],
+      systemInstruction: {
+        parts: [{
+          text: `You are a strict fitness AI coach.
+The user is performing: ${exerciseType}.
+Analyze the stream of images to evaluate form.
+For every image frame you receive, respond strictly with JSON:
+{
+  "rep_completed_this_frame": boolean, // true ONLY on the exact frame a full rep finishes
+  "current_phase": "up"|"down"|"transition",
+  "form_score": 0.0-1.0,    // quality of current form
+  "feedback": "string",     // real-time coaching tip
+  "is_valid_form": boolean  // true if form is good enough to count
+>>>>>>> Stashed changes
 }
 
 const pendingSummaries = new Map<string, WorkoutSummary>();

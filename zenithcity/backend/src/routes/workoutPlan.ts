@@ -136,7 +136,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response): Promise
 
     try {
       if (process.env.GEMINI_API_KEY) {
-        console.log(`[Gemini] Starting plan generation for user ${userId} using gemini-3.1-flash-lite-preview...`);
+        console.log(`[Gemini] Starting plan generation for user ${userId} using gemini-3.8-flash...`);
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const prompt = `
 Generate a personalized 7-day workout and an Indian nutrition diet plan.
@@ -201,7 +201,7 @@ Instructions for plan array:
 `;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite-preview',
+          model: 'gemini-3.8-flash', // Latest stable model for text generation
           contents: prompt,
           config: {
             responseMimeType: 'application/json'
